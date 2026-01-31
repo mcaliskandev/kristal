@@ -1,0 +1,5 @@
+build/
+builddir/
+kristal
+kristal.o
+.vscode/
