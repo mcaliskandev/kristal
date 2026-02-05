@@ -29,8 +29,9 @@ int main(int argc, char *argv[]) {
     }
 
     KristalCompositor server;
-	server.Create();
-    server.Run(startup_cmd);
+    server.Create();
+    const std::string startup = startup_cmd ? startup_cmd : "";
+    server.Run(startup);
     server.Destroy();
 	return 0;
 }
