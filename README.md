@@ -35,6 +35,16 @@ Use environment variables before launching:
 - `KRISTAL_OUTPUT_TRANSFORM`: `normal` (default), `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270`
 - `KRISTAL_WINDOW_PLACEMENT`: `auto` (default), `center`, or `cascade`
 - `KRISTAL_WINDOW_LAYOUT`: `floating` (default) or `stack`
+- `KRISTAL_XKB_RULES`: XKB rules (optional)
+- `KRISTAL_XKB_MODEL`: XKB model (optional)
+- `KRISTAL_XKB_LAYOUT`: XKB layout (optional)
+- `KRISTAL_XKB_VARIANT`: XKB variant (optional)
+- `KRISTAL_XKB_OPTIONS`: XKB options (optional)
+- `KRISTAL_KEY_REPEAT_RATE`: key repeat rate in Hz (default `25`)
+- `KRISTAL_KEY_REPEAT_DELAY`: key repeat delay in ms (default `600`)
+- `KRISTAL_TAP_TO_CLICK`: `0`/`1` (default `0`)
+- `KRISTAL_NATURAL_SCROLL`: `0`/`1` (default `0`)
+- `KRISTAL_POINTER_ACCEL`: pointer acceleration speed `-1.0..1.0` (default `0.0`)
 
 Example:
 

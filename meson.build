@@ -39,6 +39,7 @@ tablet_v2_protocol_header = custom_target('tablet-v2-protocol-header',
 wlroots_dep = dependency('wlroots-0.18')
 wayland_server_dep = dependency('wayland-server')
 xkb_dep = dependency('xkbcommon')
+libinput_dep = dependency('libinput')
 have_layer_shell = meson.get_compiler('cpp').has_header('wlr-layer-shell-unstable-v1-protocol.h')
 layer_shell_sources = []
 cpp_extra_args = ['-DWLR_USE_UNSTABLE']
@@ -60,7 +61,7 @@ executable('kristal',
         'src/server/Xdg.cpp', 'src/server/Protocols.cpp',
         xdg_shell_protocol_header, pointer_constraints_protocol_header,
 		tablet_v2_protocol_header] + layer_shell_sources + xwayland_sources,
-    dependencies : [wlroots_dep, wayland_server_dep, xkb_dep],
+    dependencies : [wlroots_dep, wayland_server_dep, xkb_dep, libinput_dep],
     c_args : ['-DWLR_USE_UNSTABLE'],
     cpp_args : cpp_extra_args,
     install : true,

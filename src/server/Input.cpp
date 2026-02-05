@@ -1,12 +1,20 @@
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <cerrno>
 #include <memory>
+#include <strings.h>
 #include <unistd.h>
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 
 #include "internal.h"
+
+extern "C" {
+#include <libinput.h>
+#include <wlr/backend/libinput.h>
+}
 
 namespace {
 
@@ -22,6 +30,50 @@ struct XkbKeymapDeleter {
 	}
 };
 
+long parse_env_long(const char *name, long fallback) {
+	const char *value = getenv(name);
+	if (value == nullptr || value[0] == '\0') {
+		return fallback;
+	}
+	char *end = nullptr;
+	errno = 0;
+	const long parsed = strtol(value, &end, 10);
+	if (errno != 0 || end == value || (end != nullptr && *end != '\0')) {
+		return fallback;
+	}
+	return parsed;
+}
+
+bool parse_env_bool(const char *name, bool fallback) {
+	const char *value = getenv(name);
+	if (value == nullptr || value[0] == '\0') {
+		return fallback;
+	}
+	if (strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0 ||
+		strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0) {
+		return true;
+	}
+	if (strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 ||
+		strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
+		return false;
+	}
+	return fallback;
+}
+
+double parse_env_double(const char *name, double fallback) {
+	const char *value = getenv(name);
+	if (value == nullptr || value[0] == '\0') {
+		return fallback;
+	}
+	char *end = nullptr;
+	errno = 0;
+	const double parsed = strtod(value, &end);
+	if (errno != 0 || end == value || (end != nullptr && *end != '\0')) {
+		return fallback;
+	}
+	return parsed;
+}
+
 bool spawn_command(const char *command) {
 	if (command == nullptr || command[0] == '\0') {
 		return false;
@@ -31,6 +83,34 @@ bool spawn_command(const char *command) {
 		_exit(1);
 	}
 	return true;
+}
+
+void apply_libinput_config(InputDevice *device) {
+	if (device == nullptr || !wlr_input_device_is_libinput(device)) {
+		return;
+	}
+
+	libinput_device *libinput = wlr_libinput_get_device_handle(device);
+	if (libinput == nullptr) {
+		return;
+	}
+
+	const bool tap_enabled = parse_env_bool("KRISTAL_TAP_TO_CLICK", false);
+	if (libinput_device_config_tap_get_finger_count(libinput) > 0) {
+		libinput_device_config_tap_set_enabled(
+			libinput,
+			tap_enabled ? LIBINPUT_CONFIG_TAP_ENABLED : LIBINPUT_CONFIG_TAP_DISABLED);
+	}
+
+	const bool natural_scroll = parse_env_bool("KRISTAL_NATURAL_SCROLL", false);
+	if (libinput_device_config_scroll_has_natural_scroll(libinput)) {
+		libinput_device_config_scroll_set_natural_scroll_enabled(
+			libinput,
+			natural_scroll ? 1 : 0);
+	}
+
+	const double accel_speed = parse_env_double("KRISTAL_POINTER_ACCEL", 0.0);
+	libinput_device_config_accel_set_speed(libinput, accel_speed);
 }
 
 Surface *view_surface(KristalView *view) {
@@ -293,16 +373,32 @@ void server_new_keyboard(KristalServer *server, InputDevice *device) {
 		return;
 	}
 
+	xkb_rule_names rules{};
+	rules.rules = getenv("KRISTAL_XKB_RULES");
+	rules.model = getenv("KRISTAL_XKB_MODEL");
+	rules.layout = getenv("KRISTAL_XKB_LAYOUT");
+	rules.variant = getenv("KRISTAL_XKB_VARIANT");
+	rules.options = getenv("KRISTAL_XKB_OPTIONS");
+
 	std::unique_ptr<xkb_keymap, XkbKeymapDeleter> keymap(
-		xkb_keymap_new_from_names(context.get(), nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS));
+		xkb_keymap_new_from_names(context.get(), &rules, XKB_KEYMAP_COMPILE_NO_FLAGS));
 	if (!keymap) {
-		wlr_log(WLR_ERROR, "failed to create xkb keymap");
-		delete keyboard;
-		return;
+		wlr_log(WLR_ERROR, "failed to create xkb keymap, using defaults");
+		keymap.reset(
+			xkb_keymap_new_from_names(context.get(), nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS));
+		if (!keymap) {
+			delete keyboard;
+			return;
+		}
 	}
 
 	wlr_keyboard_set_keymap(wlr_keyboard, keymap.get());
-	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+	const long repeat_rate = parse_env_long("KRISTAL_KEY_REPEAT_RATE", 25);
+	const long repeat_delay = parse_env_long("KRISTAL_KEY_REPEAT_DELAY", 600);
+	wlr_keyboard_set_repeat_info(
+		wlr_keyboard,
+		repeat_rate > 0 ? repeat_rate : 25,
+		repeat_delay >= 0 ? repeat_delay : 600);
 
 	keyboard->modifiers.notify = keyboard_handle_modifiers;
 	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
@@ -317,6 +413,7 @@ void server_new_keyboard(KristalServer *server, InputDevice *device) {
 
 void server_new_pointer(KristalServer *server, InputDevice *device) {
 	wlr_cursor_attach_input_device(server->cursor, device);
+	apply_libinput_config(device);
 }
 
 void tablet_handle_destroy(Listener *listener, void * /*data*/) {
@@ -348,6 +445,7 @@ void switch_handle_destroy(Listener *listener, void * /*data*/) {
 void server_new_touch(KristalServer *server, InputDevice *device) {
 	wlr_cursor_attach_input_device(server->cursor, device);
 	server->touch_device_count++;
+	apply_libinput_config(device);
 }
 
 void server_new_tablet(KristalServer *server, InputDevice *device) {
