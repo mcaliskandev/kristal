@@ -384,6 +384,8 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		wlr_input_method_manager_v2_create(components->display);
 	components->input_method = nullptr;
 	components->active_text_input = nullptr;
+	components->foreign_toplevel_mgr =
+		wlr_foreign_toplevel_manager_v1_create(components->display);
 	components->new_text_input.notify = server_new_text_input;
 	wl_signal_add(&components->text_input_mgr->events.text_input,
 		&components->new_text_input);

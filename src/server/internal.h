@@ -49,6 +49,7 @@ extern "C" {
 #ifdef __cplusplus
 #undef delete
 #endif
+#include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
@@ -128,6 +129,8 @@ typedef struct wlr_text_input_manager_v3 TextInputManagerV3;
 typedef struct wlr_text_input_v3 TextInputV3;
 typedef struct wlr_input_method_manager_v2 InputMethodManagerV2;
 typedef struct wlr_input_method_v2 InputMethodV2;
+typedef struct wlr_foreign_toplevel_manager_v1 ForeignToplevelManager;
+typedef struct wlr_foreign_toplevel_handle_v1 ForeignToplevelHandle;
 #ifdef KRISTAL_HAVE_XWAYLAND
 typedef struct wlr_xwayland Xwayland;
 typedef struct wlr_xwayland_surface XwaylandSurface;
@@ -262,6 +265,7 @@ struct KristalServer {
 	InputMethodManagerV2 *input_method_mgr;
 	InputMethodV2 *input_method;
 	TextInputV3 *active_text_input;
+	ForeignToplevelManager *foreign_toplevel_mgr;
 	Listener new_text_input;
 	Listener new_input_method;
 	Listener input_method_commit;
@@ -307,6 +311,7 @@ struct KristalView {
 	enum KristalViewType type;
 	int workspace;
 	bool mapped;
+	ForeignToplevelHandle *foreign_toplevel;
 };
 
 struct KristalToplevel {
@@ -323,6 +328,8 @@ struct KristalToplevel {
 	Listener request_resize;
 	Listener request_maximize;
 	Listener request_fullscreen;
+	Listener set_title;
+	Listener set_app_id;
 };
 
 struct KristalPopup {
@@ -345,6 +352,7 @@ struct KristalXwaylandSurface {
 	Listener request_configure;
 	Listener request_activate;
 	Listener map_request;
+	Listener set_title;
 };
 #endif
 
@@ -401,6 +409,9 @@ void server_close_focused(KristalServer *server);
 void server_update_output_manager_config(KristalServer *server);
 void server_arrange_workspace(KristalServer *server);
 void server_text_input_focus(KristalServer *server, Surface *surface);
+void server_register_foreign_toplevel(KristalView *view, const char *title, const char *app_id);
+void server_update_foreign_toplevel(KristalView *view, const char *title, const char *app_id);
+void server_unregister_foreign_toplevel(KristalView *view);
 
 void server_new_output(Listener *listener, void *data);
 void server_cursor_motion(Listener *listener, void *data);

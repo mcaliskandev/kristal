@@ -36,6 +36,17 @@ struct KristalTextInputHandle {
 	Listener destroy;
 };
 
+struct KristalForeignToplevelHandle {
+	KristalView *view;
+	ForeignToplevelHandle *handle;
+	Listener request_activate;
+	Listener request_close;
+	Listener request_maximize;
+	Listener request_fullscreen;
+	Listener request_minimize;
+	Listener destroy;
+};
+
 void update_idle_inhibit(KristalServer *server) {
 	bool inhibited = !wl_list_empty(&server->idle_inhibit_mgr->inhibitors);
 	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier, inhibited);
@@ -112,6 +123,150 @@ void text_input_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&handle->destroy.link);
 	if (handle->server->active_text_input == handle->text_input) {
 		handle->server->active_text_input = nullptr;
+	}
+	delete handle;
+}
+
+Surface *foreign_view_surface(KristalView *view) {
+	if (view == nullptr) {
+		return nullptr;
+	}
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		return toplevel->xdg_toplevel->base->surface;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface != nullptr) {
+		return xsurface->xwayland_surface->surface;
+	}
+#endif
+	return nullptr;
+}
+
+void foreign_request_activate(Listener *listener, void *data) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		request_activate);
+	auto *event = static_cast<wlr_foreign_toplevel_handle_v1_activated_event *>(data);
+	(void)event;
+	auto *surface = foreign_view_surface(handle->view);
+	if (surface != nullptr) {
+		focus_surface(handle->view->server, surface);
+	}
+}
+
+void foreign_request_close(Listener *listener, void * /*data*/) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		request_close);
+	if (handle->view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(handle->view, (KristalToplevel *)nullptr, view);
+		wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+		return;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(handle->view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface != nullptr) {
+		wlr_xwayland_surface_close(xsurface->xwayland_surface);
+	}
+#endif
+}
+
+void foreign_request_maximize(Listener *listener, void *data) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		request_maximize);
+	auto *event = static_cast<wlr_foreign_toplevel_handle_v1_maximized_event *>(data);
+	if (handle->view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(handle->view, (KristalToplevel *)nullptr, view);
+		wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, event->maximized);
+		if (handle->handle != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_maximized(
+				handle->handle,
+				event->maximized);
+		}
+		return;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(handle->view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface != nullptr) {
+		wlr_xwayland_surface_set_maximized(xsurface->xwayland_surface, event->maximized);
+		if (handle->handle != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_maximized(
+				handle->handle,
+				event->maximized);
+		}
+	}
+#endif
+}
+
+void foreign_request_fullscreen(Listener *listener, void *data) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		request_fullscreen);
+	auto *event = static_cast<wlr_foreign_toplevel_handle_v1_fullscreen_event *>(data);
+	if (handle->view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(handle->view, (KristalToplevel *)nullptr, view);
+		wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, event->fullscreen);
+		if (handle->handle != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_fullscreen(
+				handle->handle,
+				event->fullscreen);
+		}
+		return;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(handle->view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface != nullptr) {
+		wlr_xwayland_surface_set_fullscreen(xsurface->xwayland_surface, event->fullscreen);
+		if (handle->handle != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_fullscreen(
+				handle->handle,
+				event->fullscreen);
+		}
+	}
+#endif
+}
+
+void foreign_request_minimize(Listener *listener, void *data) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		request_minimize);
+	auto *event = static_cast<wlr_foreign_toplevel_handle_v1_minimized_event *>(data);
+#ifdef KRISTAL_HAVE_XWAYLAND
+	if (handle->view->type == KRISTAL_VIEW_XWAYLAND) {
+		auto *xsurface = wl_container_of(handle->view, (KristalXwaylandSurface *)nullptr, view);
+		if (xsurface->xwayland_surface != nullptr) {
+			wlr_xwayland_surface_set_minimized(xsurface->xwayland_surface, event->minimized);
+		}
+	}
+#endif
+	if (handle->handle != nullptr) {
+		wlr_foreign_toplevel_handle_v1_set_minimized(
+			handle->handle,
+			event->minimized);
+	}
+}
+
+void foreign_toplevel_destroy(Listener *listener, void * /*data*/) {
+	auto *handle = wl_container_of(
+		listener,
+		(KristalForeignToplevelHandle *)nullptr,
+		destroy);
+	wl_list_remove(&handle->request_activate.link);
+	wl_list_remove(&handle->request_close.link);
+	wl_list_remove(&handle->request_maximize.link);
+	wl_list_remove(&handle->request_fullscreen.link);
+	wl_list_remove(&handle->request_minimize.link);
+	wl_list_remove(&handle->destroy.link);
+	if (handle->view != nullptr) {
+		handle->view->foreign_toplevel = nullptr;
 	}
 	delete handle;
 }
@@ -233,4 +388,84 @@ void server_text_input_focus(KristalServer *server, Surface *surface) {
 			wlr_text_input_v3_send_leave(text_input);
 		}
 	}
+}
+
+void server_register_foreign_toplevel(KristalView *view, const char *title, const char *app_id) {
+	if (view == nullptr || view->server == nullptr || view->foreign_toplevel != nullptr) {
+		return;
+	}
+	if (view->server->foreign_toplevel_mgr == nullptr) {
+		return;
+	}
+	auto *handle = wlr_foreign_toplevel_handle_v1_create(view->server->foreign_toplevel_mgr);
+	if (handle == nullptr) {
+		return;
+	}
+
+	auto *foreign = new KristalForeignToplevelHandle{};
+	foreign->view = view;
+	foreign->handle = handle;
+	handle->data = foreign;
+	view->foreign_toplevel = handle;
+
+	wlr_foreign_toplevel_handle_v1_set_title(handle, title ? title : "");
+	wlr_foreign_toplevel_handle_v1_set_app_id(handle, app_id ? app_id : "");
+
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		wlr_foreign_toplevel_handle_v1_set_maximized(
+			handle,
+			toplevel->xdg_toplevel->current.maximized);
+		wlr_foreign_toplevel_handle_v1_set_fullscreen(
+			handle,
+			toplevel->xdg_toplevel->current.fullscreen);
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	if (view->type == KRISTAL_VIEW_XWAYLAND) {
+		auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+		if (xsurface->xwayland_surface != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_maximized(
+				handle,
+				xsurface->xwayland_surface->maximized_horz &&
+					xsurface->xwayland_surface->maximized_vert);
+			wlr_foreign_toplevel_handle_v1_set_fullscreen(
+				handle,
+				xsurface->xwayland_surface->fullscreen);
+		}
+	}
+#endif
+
+	Surface *surface = foreign_view_surface(view);
+	if (surface != nullptr && view->server->focused_surface == surface) {
+		wlr_foreign_toplevel_handle_v1_set_activated(handle, true);
+	}
+
+	foreign->request_activate.notify = foreign_request_activate;
+	wl_signal_add(&handle->events.request_activate, &foreign->request_activate);
+	foreign->request_close.notify = foreign_request_close;
+	wl_signal_add(&handle->events.request_close, &foreign->request_close);
+	foreign->request_maximize.notify = foreign_request_maximize;
+	wl_signal_add(&handle->events.request_maximize, &foreign->request_maximize);
+	foreign->request_fullscreen.notify = foreign_request_fullscreen;
+	wl_signal_add(&handle->events.request_fullscreen, &foreign->request_fullscreen);
+	foreign->request_minimize.notify = foreign_request_minimize;
+	wl_signal_add(&handle->events.request_minimize, &foreign->request_minimize);
+	foreign->destroy.notify = foreign_toplevel_destroy;
+	wl_signal_add(&handle->events.destroy, &foreign->destroy);
+}
+
+void server_update_foreign_toplevel(KristalView *view, const char *title, const char *app_id) {
+	if (view == nullptr || view->foreign_toplevel == nullptr) {
+		return;
+	}
+	wlr_foreign_toplevel_handle_v1_set_title(view->foreign_toplevel, title ? title : "");
+	wlr_foreign_toplevel_handle_v1_set_app_id(view->foreign_toplevel, app_id ? app_id : "");
+}
+
+void server_unregister_foreign_toplevel(KristalView *view) {
+	if (view == nullptr || view->foreign_toplevel == nullptr) {
+		return;
+	}
+	wlr_foreign_toplevel_handle_v1_destroy(view->foreign_toplevel);
+	view->foreign_toplevel = nullptr;
 }

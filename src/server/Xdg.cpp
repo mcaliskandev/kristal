@@ -173,6 +173,11 @@ void apply_maximized_state(KristalToplevel *toplevel, bool maximized) {
 	}
 
 	wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, maximized);
+	if (toplevel->view.foreign_toplevel != nullptr) {
+		wlr_foreign_toplevel_handle_v1_set_maximized(
+			toplevel->view.foreign_toplevel,
+			maximized);
+	}
 
 	if (!maximized && !toplevel->xdg_toplevel->requested.fullscreen) {
 		restore_saved_geometry(toplevel);
@@ -189,6 +194,11 @@ void apply_fullscreen_state(KristalToplevel *toplevel, bool fullscreen) {
 	}
 
 	wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, fullscreen);
+	if (toplevel->view.foreign_toplevel != nullptr) {
+		wlr_foreign_toplevel_handle_v1_set_fullscreen(
+			toplevel->view.foreign_toplevel,
+			fullscreen);
+	}
 
 	if (!fullscreen && !toplevel->xdg_toplevel->requested.maximized) {
 		restore_saved_geometry(toplevel);
@@ -211,6 +221,10 @@ void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 		place_toplevel_if_needed(toplevel);
 	}
 
+	server_register_foreign_toplevel(
+		&toplevel->view,
+		toplevel->xdg_toplevel->title,
+		toplevel->xdg_toplevel->app_id);
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 	server_arrange_workspace(toplevel->view.server);
 }
@@ -222,6 +236,7 @@ void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
 	}
 	toplevel->view.mapped = false;
 	wl_list_remove(&toplevel->view.link);
+	server_unregister_foreign_toplevel(&toplevel->view);
 	server_arrange_workspace(toplevel->view.server);
 }
 
@@ -246,11 +261,29 @@ void xdg_toplevel_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&toplevel->request_resize.link);
 	wl_list_remove(&toplevel->request_maximize.link);
 	wl_list_remove(&toplevel->request_fullscreen.link);
+	wl_list_remove(&toplevel->set_title.link);
+	wl_list_remove(&toplevel->set_app_id.link);
 	if (toplevel->view.mapped) {
 		wl_list_remove(&toplevel->view.link);
 	}
 
 	delete toplevel;
+}
+
+void xdg_toplevel_set_title(Listener *listener, void * /*data*/) {
+	auto *toplevel = wl_container_of(listener, (KristalToplevel *)nullptr, set_title);
+	server_update_foreign_toplevel(
+		&toplevel->view,
+		toplevel->xdg_toplevel->title,
+		toplevel->xdg_toplevel->app_id);
+}
+
+void xdg_toplevel_set_app_id(Listener *listener, void * /*data*/) {
+	auto *toplevel = wl_container_of(listener, (KristalToplevel *)nullptr, set_app_id);
+	server_update_foreign_toplevel(
+		&toplevel->view,
+		toplevel->xdg_toplevel->title,
+		toplevel->xdg_toplevel->app_id);
 }
 
 void begin_interactive(KristalToplevel *toplevel, CursorMode mode, uint32_t edges) {
@@ -338,6 +371,7 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 	toplevel->view.type = KRISTAL_VIEW_XDG;
 	toplevel->view.workspace = server->current_workspace;
 	toplevel->view.mapped = false;
+	toplevel->view.foreign_toplevel = nullptr;
 	toplevel->xdg_toplevel = xdg_toplevel;
 	toplevel->view.scene_tree =
 		wlr_scene_xdg_surface_create(&toplevel->view.server->scene->tree, xdg_toplevel->base);
@@ -363,6 +397,10 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 	wl_signal_add(&xdg_toplevel->events.request_maximize, &toplevel->request_maximize);
 	toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
 	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
+	toplevel->set_title.notify = xdg_toplevel_set_title;
+	wl_signal_add(&xdg_toplevel->events.set_title, &toplevel->set_title);
+	toplevel->set_app_id.notify = xdg_toplevel_set_app_id;
+	wl_signal_add(&xdg_toplevel->events.set_app_id, &toplevel->set_app_id);
 }
 
 void server_new_xdg_popup(Listener * /*listener*/, void *data) {

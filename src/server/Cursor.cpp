@@ -382,6 +382,12 @@ void focus_surface(KristalServer *server, Surface *surface) {
 	}
 
 	if (server->focused_surface != nullptr) {
+		auto *prev_view = view_from_surface(server->focused_surface);
+		if (prev_view != nullptr && prev_view->foreign_toplevel != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_activated(
+				prev_view->foreign_toplevel,
+				false);
+		}
 		deactivate_surface(server->focused_surface);
 	}
 
@@ -392,6 +398,11 @@ void focus_surface(KristalServer *server, Surface *surface) {
 		if (view->mapped) {
 			wl_list_remove(&view->link);
 			wl_list_insert(&server->views, &view->link);
+		}
+		if (view->foreign_toplevel != nullptr) {
+			wlr_foreign_toplevel_handle_v1_set_activated(
+				view->foreign_toplevel,
+				true);
 		}
 	}
 

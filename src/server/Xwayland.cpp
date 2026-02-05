@@ -58,6 +58,10 @@ void xwayland_surface_map(Listener *listener, void * /*data*/) {
 		surface->view.workspace == surface->view.server->current_workspace);
 	wl_list_insert(&surface->view.server->views, &surface->view.link);
 
+	server_register_foreign_toplevel(
+		&surface->view,
+		surface->xwayland_surface->title,
+		surface->xwayland_surface->class);
 	if (surface->xwayland_surface->surface != nullptr) {
 		focus_surface(surface->view.server, surface->xwayland_surface->surface);
 	}
@@ -71,6 +75,7 @@ void xwayland_surface_unmap(Listener *listener, void * /*data*/) {
 	}
 	surface->view.mapped = false;
 	wl_list_remove(&surface->view.link);
+	server_unregister_foreign_toplevel(&surface->view);
 	if (surface->view.server->grabbed_xwayland == surface) {
 		reset_cursor_mode(surface->view.server);
 	}
@@ -123,14 +128,24 @@ void xwayland_surface_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&surface->request_configure.link);
 	wl_list_remove(&surface->request_activate.link);
 	wl_list_remove(&surface->map_request.link);
+	wl_list_remove(&surface->set_title.link);
 	if (surface->view.scene_tree != nullptr) {
 		wlr_scene_node_destroy(&surface->view.scene_tree->node);
 	}
 	if (surface->view.mapped) {
 		wl_list_remove(&surface->view.link);
 	}
+	server_unregister_foreign_toplevel(&surface->view);
 
 	delete surface;
+}
+
+void xwayland_surface_set_title(Listener *listener, void * /*data*/) {
+	KristalXwaylandSurface *surface = wl_container_of(listener, surface, set_title);
+	server_update_foreign_toplevel(
+		&surface->view,
+		surface->xwayland_surface->title,
+		surface->xwayland_surface->class);
 }
 
 void xwayland_surface_request_configure(Listener *listener, void *data) {
@@ -192,6 +207,7 @@ void server_new_xwayland_surface(Listener *listener, void *data) {
 	surface->view.type = KRISTAL_VIEW_XWAYLAND;
 	surface->view.workspace = server->current_workspace;
 	surface->view.mapped = false;
+	surface->view.foreign_toplevel = nullptr;
 	surface->xwayland_surface = xsurface;
 	xsurface->data = surface;
 
@@ -211,4 +227,6 @@ void server_new_xwayland_surface(Listener *listener, void *data) {
 	wl_signal_add(&xsurface->events.request_activate, &surface->request_activate);
 	surface->map_request.notify = xwayland_surface_map_request;
 	wl_signal_add(&xsurface->events.map_request, &surface->map_request);
+	surface->set_title.notify = xwayland_surface_set_title;
+	wl_signal_add(&xsurface->events.set_title, &surface->set_title);
 }

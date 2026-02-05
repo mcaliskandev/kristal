@@ -92,6 +92,7 @@ struct ServerComponents {
 	InputMethodManagerV2 *input_method_mgr;
 	InputMethodV2 *input_method;
 	TextInputV3 *active_text_input;
+	ForeignToplevelManager *foreign_toplevel_mgr;
 	Listener new_text_input;
 	Listener new_input_method;
 	Listener input_method_commit;
