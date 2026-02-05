@@ -271,6 +271,40 @@ void foreign_toplevel_destroy(Listener *listener, void * /*data*/) {
 	delete handle;
 }
 
+void session_lock_surface_destroy(Listener *listener, void * /*data*/) {
+	auto *surface = wl_container_of(listener, (KristalSessionLockSurface *)nullptr, destroy);
+	wl_list_remove(&surface->destroy.link);
+	wl_list_remove(&surface->link);
+	if (surface->scene_tree != nullptr) {
+		wlr_scene_node_destroy(&surface->scene_tree->node);
+	}
+	delete surface;
+}
+
+void clear_session_lock(KristalServer *server) {
+	if (server == nullptr) {
+		return;
+	}
+	server->session_locked = false;
+	server->session_lock = nullptr;
+
+	KristalSessionLockSurface *surface = nullptr;
+	KristalSessionLockSurface *tmp = nullptr;
+	wl_list_for_each_safe(surface, tmp, &server->lock_surfaces, link) {
+		wl_list_remove(&surface->destroy.link);
+		wl_list_remove(&surface->link);
+		if (surface->scene_tree != nullptr) {
+			wlr_scene_node_destroy(&surface->scene_tree->node);
+		}
+		delete surface;
+	}
+
+	if (server->lock_scene != nullptr) {
+		wlr_scene_node_destroy(&server->lock_scene->node);
+		server->lock_scene = nullptr;
+	}
+}
+
 } // namespace
 
 void server_new_toplevel_decoration(Listener *listener, void *data) {
@@ -388,6 +422,85 @@ void server_text_input_focus(KristalServer *server, Surface *surface) {
 			wlr_text_input_v3_send_leave(text_input);
 		}
 	}
+}
+
+void server_new_session_lock(Listener *listener, void *data) {
+	auto *server = wl_container_of(listener, (KristalServer *)nullptr, new_session_lock);
+	auto *lock = static_cast<SessionLock *>(data);
+	if (server->session_lock != nullptr) {
+		wlr_session_lock_v1_destroy(lock);
+		return;
+	}
+
+	server->session_lock = lock;
+	server->session_locked = true;
+	wlr_seat_keyboard_clear_focus(server->seat);
+	wlr_seat_pointer_clear_focus(server->seat);
+	if (server->lock_scene == nullptr) {
+		server->lock_scene = wlr_scene_tree_create(&server->scene->tree);
+		wlr_scene_node_raise_to_top(&server->lock_scene->node);
+	}
+
+	server->new_lock_surface.notify = server_new_lock_surface;
+	wl_signal_add(&lock->events.new_surface, &server->new_lock_surface);
+	server->session_lock_destroy.notify = server_session_lock_destroy;
+	wl_signal_add(&lock->events.destroy, &server->session_lock_destroy);
+	server->session_lock_unlock.notify = server_session_lock_unlock;
+	wl_signal_add(&lock->events.unlock, &server->session_lock_unlock);
+
+	wlr_session_lock_v1_send_locked(lock);
+}
+
+void server_session_lock_destroy(Listener *listener, void * /*data*/) {
+	auto *server = wl_container_of(listener, (KristalServer *)nullptr, session_lock_destroy);
+	wl_list_remove(&server->new_lock_surface.link);
+	wl_list_remove(&server->session_lock_destroy.link);
+	wl_list_remove(&server->session_lock_unlock.link);
+	clear_session_lock(server);
+}
+
+void server_session_lock_unlock(Listener *listener, void * /*data*/) {
+	auto *server = wl_container_of(listener, (KristalServer *)nullptr, session_lock_unlock);
+	wl_list_remove(&server->new_lock_surface.link);
+	wl_list_remove(&server->session_lock_destroy.link);
+	wl_list_remove(&server->session_lock_unlock.link);
+	clear_session_lock(server);
+}
+
+void server_new_lock_surface(Listener *listener, void *data) {
+	auto *server = wl_container_of(listener, (KristalServer *)nullptr, new_lock_surface);
+	auto *lock_surface = static_cast<SessionLockSurface *>(data);
+
+	if (server->lock_scene == nullptr) {
+		server->lock_scene = wlr_scene_tree_create(&server->scene->tree);
+		wlr_scene_node_raise_to_top(&server->lock_scene->node);
+	}
+
+	auto *surface = new KristalSessionLockSurface{};
+	surface->server = server;
+	surface->lock_surface = lock_surface;
+	surface->scene_tree = wlr_scene_subsurface_tree_create(
+		server->lock_scene,
+		lock_surface->surface);
+	lock_surface->data = surface;
+
+	Box output_box{};
+	wlr_output_layout_get_box(
+		server->output_layout,
+		lock_surface->output,
+		&output_box);
+	wlr_scene_node_set_position(
+		&surface->scene_tree->node,
+		output_box.x,
+		output_box.y);
+	wlr_session_lock_surface_v1_configure(
+		lock_surface,
+		output_box.width,
+		output_box.height);
+
+	surface->destroy.notify = session_lock_surface_destroy;
+	wl_signal_add(&lock_surface->events.destroy, &surface->destroy);
+	wl_list_insert(&server->lock_surfaces, &surface->link);
 }
 
 void server_register_foreign_toplevel(KristalView *view, const char *title, const char *app_id) {

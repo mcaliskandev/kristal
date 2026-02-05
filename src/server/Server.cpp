@@ -377,6 +377,16 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		wlr_primary_selection_v1_device_manager_create(components->display);
 	components->data_control_mgr =
 		wlr_data_control_manager_v1_create(components->display);
+	components->session_lock_mgr =
+		wlr_session_lock_manager_v1_create(components->display);
+	components->session_lock = nullptr;
+	components->session_locked = false;
+	components->lock_scene = nullptr;
+	wl_list_init(&components->lock_surfaces);
+	components->new_session_lock.notify = server_new_session_lock;
+	wl_signal_add(
+		&components->session_lock_mgr->events.new_lock,
+		&components->new_session_lock);
 	components->screencopy_mgr = wlr_screencopy_manager_v1_create(components->display);
 	components->virtual_keyboard_mgr =
 		wlr_virtual_keyboard_manager_v1_create(components->display);

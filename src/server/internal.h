@@ -51,6 +51,7 @@ extern "C" {
 #undef delete
 #endif
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
@@ -132,6 +133,9 @@ typedef struct wlr_input_method_manager_v2 InputMethodManagerV2;
 typedef struct wlr_input_method_v2 InputMethodV2;
 typedef struct wlr_foreign_toplevel_manager_v1 ForeignToplevelManager;
 typedef struct wlr_foreign_toplevel_handle_v1 ForeignToplevelHandle;
+typedef struct wlr_session_lock_manager_v1 SessionLockManager;
+typedef struct wlr_session_lock_v1 SessionLock;
+typedef struct wlr_session_lock_surface_v1 SessionLockSurface;
 typedef struct wlr_data_control_manager_v1 DataControlManagerV1;
 #ifdef KRISTAL_HAVE_XWAYLAND
 typedef struct wlr_xwayland Xwayland;
@@ -269,10 +273,19 @@ struct KristalServer {
 	TextInputV3 *active_text_input;
 	ForeignToplevelManager *foreign_toplevel_mgr;
 	DataControlManagerV1 *data_control_mgr;
+	SessionLockManager *session_lock_mgr;
+	SessionLock *session_lock;
+	bool session_locked;
+	SceneTree *lock_scene;
+	List lock_surfaces;
 	Listener new_text_input;
 	Listener new_input_method;
 	Listener input_method_commit;
 	Listener input_method_destroy;
+	Listener new_session_lock;
+	Listener session_lock_destroy;
+	Listener session_lock_unlock;
+	Listener new_lock_surface;
 	struct wlr_output_manager_v1 *output_manager;
 	Listener output_manager_apply;
 	Listener output_manager_test;
@@ -403,6 +416,14 @@ struct KristalLayerSurface {
 	Listener destroy;
 };
 
+struct KristalSessionLockSurface {
+	List link;
+	KristalServer *server;
+	SessionLockSurface *lock_surface;
+	SceneTree *scene_tree;
+	Listener destroy;
+};
+
 void focus_toplevel(KristalToplevel *toplevel, Surface *surface);
 void reset_cursor_mode(KristalServer *server);
 void focus_surface(KristalServer *server, Surface *surface);
@@ -453,6 +474,10 @@ void server_new_text_input(Listener *listener, void *data);
 void server_new_input_method(Listener *listener, void *data);
 void server_input_method_commit(Listener *listener, void *data);
 void server_input_method_destroy(Listener *listener, void *data);
+void server_new_session_lock(Listener *listener, void *data);
+void server_session_lock_destroy(Listener *listener, void *data);
+void server_session_lock_unlock(Listener *listener, void *data);
+void server_new_lock_surface(Listener *listener, void *data);
 #ifdef KRISTAL_HAVE_XWAYLAND
 void server_xwayland_ready(Listener *listener, void *data);
 void server_new_xwayland_surface(Listener *listener, void *data);

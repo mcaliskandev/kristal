@@ -275,6 +275,11 @@ void process_cursor_motion(KristalServer *server, uint32_t time) {
 	}
 
 	if (surface != nullptr) {
+		if (server->session_locked &&
+			wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
+			wlr_seat_pointer_clear_focus(seat);
+			return;
+		}
 		wlr_seat_pointer_notify_enter(seat, surface, surface_x, surface_y);
 		wlr_seat_pointer_notify_motion(seat, time, surface_x, surface_y);
 		return;
@@ -369,6 +374,10 @@ void focus_toplevel(KristalToplevel *toplevel, Surface *surface) {
 
 void focus_surface(KristalServer *server, Surface *surface) {
 	if (server == nullptr || surface == nullptr) {
+		return;
+	}
+	if (server->session_locked &&
+		wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
 		return;
 	}
 
@@ -660,6 +669,10 @@ void server_cursor_touch_down(Listener *listener, void *data) {
 	Surface *surface = nullptr;
 	desktop_view_at(server, lx, ly, &surface, &sx, &sy);
 	if (surface != nullptr) {
+		if (server->session_locked &&
+			wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
+			return;
+		}
 		wlr_seat_touch_notify_down(
 			server->seat, surface, event->time_msec, event->touch_id, sx, sy);
 	}
@@ -696,6 +709,10 @@ void server_cursor_touch_motion(Listener *listener, void *data) {
 	Surface *surface = nullptr;
 	desktop_view_at(server, lx, ly, &surface, &sx, &sy);
 	if (surface != nullptr) {
+		if (server->session_locked &&
+			wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
+			return;
+		}
 		wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, sx, sy);
 	}
 	if (server->idle_notifier != nullptr) {
