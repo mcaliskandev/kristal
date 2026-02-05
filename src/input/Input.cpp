@@ -9,7 +9,7 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 
-#include "internal.h"
+#include "core/internal.h"
 
 extern "C" {
 #include <libinput.h>

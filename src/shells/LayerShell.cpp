@@ -1,6 +1,6 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 
-#include "internal.h"
+#include "core/internal.h"
 
 namespace {
 

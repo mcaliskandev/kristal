@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cassert>
 
-#include "internal.h"
+#include "core/internal.h"
 
 namespace {
 

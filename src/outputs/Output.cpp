@@ -5,7 +5,7 @@
 
 #include <wayland-client-protocol.h>
 
-#include "internal.h"
+#include "core/internal.h"
 
 namespace {
 

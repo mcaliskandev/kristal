@@ -44,21 +44,21 @@ have_layer_shell = meson.get_compiler('cpp').has_header('wlr-layer-shell-unstabl
 layer_shell_sources = []
 cpp_extra_args = ['-DWLR_USE_UNSTABLE']
 if have_layer_shell
-  layer_shell_sources += ['src/server/LayerShell.cpp']
+  layer_shell_sources += ['src/shells/LayerShell.cpp']
   cpp_extra_args += ['-DKRISTAL_HAVE_LAYER_SHELL=1']
 endif
 have_xwayland = meson.get_compiler('cpp').has_header('xcb/xcb_ewmh.h') and
   meson.get_compiler('cpp').has_header('xcb/xcb_icccm.h')
 xwayland_sources = []
 if have_xwayland
-  xwayland_sources += ['src/server/Xwayland.cpp']
+  xwayland_sources += ['src/shells/Xwayland.cpp']
   cpp_extra_args += ['-DKRISTAL_HAVE_XWAYLAND=1']
 endif
 
 executable('kristal',
-    sources : ['src/main.cpp', 'src/server/Server.cpp',
-        'src/server/Input.cpp', 'src/server/Cursor.cpp', 'src/server/Output.cpp',
-        'src/server/Xdg.cpp', 'src/server/Protocols.cpp',
+    sources : ['src/main.cpp', 'src/core/Server.cpp',
+        'src/input/Input.cpp', 'src/input/Cursor.cpp', 'src/outputs/Output.cpp',
+        'src/shells/Xdg.cpp', 'src/protocols/Protocols.cpp',
         xdg_shell_protocol_header, pointer_constraints_protocol_header,
 		tablet_v2_protocol_header] + layer_shell_sources + xwayland_sources,
     dependencies : [wlroots_dep, wayland_server_dep, xkb_dep, libinput_dep],

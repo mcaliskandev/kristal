@@ -1,7 +1,7 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
-#include "internal.h"
+#include "core/internal.h"
 
 #include <cstdint>
 #include <cstdlib>

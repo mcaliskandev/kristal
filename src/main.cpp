@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <unistd.h>
 
-#include "server/Server.hpp"
+#include "core/Server.hpp"
 
 static void usage(const char *prog) {
     std::printf("Usage: %s [-s startup command]\n", prog);

@@ -1,6 +1,6 @@
 #include <linux/input-event-codes.h>
 
-#include "internal.h"
+#include "core/internal.h"
 
 namespace {
 
