@@ -22,8 +22,8 @@ xkb_dep = dependency('xkbcommon')
 
 executable('kristal',
     sources : ['src/main.cpp', 'src/server/Server.cpp',
-        'src/server/input.cpp', 'src/server/cursor.cpp', 'src/server/output.cpp',
-        'src/server/xdg.cpp', xdg_shell_protocol_header],
+        'src/server/Input.cpp', 'src/server/Cursor.cpp', 'src/server/Output.cpp',
+        'src/server/Xdg.cpp', xdg_shell_protocol_header],
     dependencies : [wlroots_dep, wayland_server_dep, xkb_dep],
     c_args : ['-DWLR_USE_UNSTABLE'],
     cpp_args : ['-DWLR_USE_UNSTABLE'],
