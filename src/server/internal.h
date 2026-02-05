@@ -17,6 +17,7 @@ extern "C" {
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -131,6 +132,7 @@ typedef struct wlr_input_method_manager_v2 InputMethodManagerV2;
 typedef struct wlr_input_method_v2 InputMethodV2;
 typedef struct wlr_foreign_toplevel_manager_v1 ForeignToplevelManager;
 typedef struct wlr_foreign_toplevel_handle_v1 ForeignToplevelHandle;
+typedef struct wlr_data_control_manager_v1 DataControlManagerV1;
 #ifdef KRISTAL_HAVE_XWAYLAND
 typedef struct wlr_xwayland Xwayland;
 typedef struct wlr_xwayland_surface XwaylandSurface;
@@ -266,6 +268,7 @@ struct KristalServer {
 	InputMethodV2 *input_method;
 	TextInputV3 *active_text_input;
 	ForeignToplevelManager *foreign_toplevel_mgr;
+	DataControlManagerV1 *data_control_mgr;
 	Listener new_text_input;
 	Listener new_input_method;
 	Listener input_method_commit;

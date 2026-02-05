@@ -375,6 +375,8 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 			&components->request_set_selection);
 	components->primary_selection_mgr =
 		wlr_primary_selection_v1_device_manager_create(components->display);
+	components->data_control_mgr =
+		wlr_data_control_manager_v1_create(components->display);
 	components->screencopy_mgr = wlr_screencopy_manager_v1_create(components->display);
 	components->virtual_keyboard_mgr =
 		wlr_virtual_keyboard_manager_v1_create(components->display);
