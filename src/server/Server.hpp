@@ -77,6 +77,9 @@ struct ServerComponents {
 	enum OutputLayoutMode output_layout_mode;
 	int next_output_x;
 	int next_output_y;
+	enum WindowPlacementMode window_placement_mode;
+	int next_window_x;
+	int next_window_y;
 	XdgOutputManager *xdg_output_mgr;
 	FractionalScaleManager *fractional_scale_mgr;
 	PrimarySelectionManager *primary_selection_mgr;

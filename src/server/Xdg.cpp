@@ -1,8 +1,11 @@
+#include <algorithm>
 #include <cassert>
 
 #include "internal.h"
 
 namespace {
+
+constexpr int kCascadeStep = 32;
 
 void save_current_geometry(KristalToplevel *toplevel) {
 	if (toplevel->has_saved_geometry) {
@@ -57,6 +60,90 @@ Output *toplevel_output(KristalToplevel *toplevel) {
 	}
 
 	return wlr_output_layout_get_center_output(toplevel->view.server->output_layout);
+}
+
+void place_toplevel_if_needed(KristalToplevel *toplevel) {
+	if (toplevel == nullptr || toplevel->placed) {
+		return;
+	}
+
+	auto *server = toplevel->view.server;
+	if (server == nullptr) {
+		return;
+	}
+	if (toplevel->xdg_toplevel->requested.fullscreen ||
+		toplevel->xdg_toplevel->requested.maximized) {
+		return;
+	}
+
+	Output *output = toplevel_output(toplevel);
+	if (output == nullptr) {
+		return;
+	}
+
+	Box output_box{};
+	wlr_output_layout_get_box(server->output_layout, output, &output_box);
+	if (output_box.width <= 0 || output_box.height <= 0) {
+		return;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	if (geometry.width <= 0 || geometry.height <= 0) {
+		return;
+	}
+
+	WindowPlacementMode mode = server->window_placement_mode;
+	if (mode == WINDOW_PLACE_AUTO) {
+		mode = WINDOW_PLACE_CENTER;
+	}
+
+	int x = output_box.x;
+	int y = output_box.y;
+	switch (mode) {
+	case WINDOW_PLACE_CASCADE: {
+		x = output_box.x + server->next_window_x;
+		y = output_box.y + server->next_window_y;
+		int next_x = server->next_window_x + kCascadeStep;
+		int next_y = server->next_window_y + kCascadeStep;
+
+		if (x + geometry.width > output_box.x + output_box.width ||
+			y + geometry.height > output_box.y + output_box.height) {
+			x = output_box.x;
+			y = output_box.y;
+			next_x = kCascadeStep;
+			next_y = kCascadeStep;
+		}
+
+		server->next_window_x = next_x;
+		server->next_window_y = next_y;
+		break;
+	}
+	case WINDOW_PLACE_CENTER:
+	default:
+		x = output_box.x + (output_box.width - geometry.width) / 2;
+		y = output_box.y + (output_box.height - geometry.height) / 2;
+		break;
+	}
+
+	if (x < output_box.x) {
+		x = output_box.x;
+	}
+	if (y < output_box.y) {
+		y = output_box.y;
+	}
+	if (x + geometry.width > output_box.x + output_box.width) {
+		x = output_box.x + std::max(0, output_box.width - geometry.width);
+	}
+	if (y + geometry.height > output_box.y + output_box.height) {
+		y = output_box.y + std::max(0, output_box.height - geometry.height);
+	}
+
+	wlr_scene_node_set_position(
+		&toplevel->view.scene_tree->node,
+		x - geometry.x,
+		y - geometry.y);
+	toplevel->placed = true;
 }
 
 void arrange_toplevel_on_output(KristalToplevel *toplevel, Output *output) {
@@ -120,6 +207,8 @@ void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 		apply_fullscreen_state(toplevel, true);
 	} else if (toplevel->xdg_toplevel->requested.maximized) {
 		apply_maximized_state(toplevel, true);
+	} else {
+		place_toplevel_if_needed(toplevel);
 	}
 
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
@@ -138,6 +227,9 @@ void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, commit);
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+	}
+	if (toplevel->view.mapped) {
+		place_toplevel_if_needed(toplevel);
 	}
 }
 
@@ -249,6 +341,7 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 		wlr_scene_xdg_surface_create(&toplevel->view.server->scene->tree, xdg_toplevel->base);
 	toplevel->view.scene_tree->node.data = &toplevel->view;
 	xdg_toplevel->base->data = toplevel->view.scene_tree;
+	toplevel->placed = false;
 
 	toplevel->map.notify = xdg_toplevel_map;
 	wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);

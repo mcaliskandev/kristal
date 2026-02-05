@@ -145,6 +145,12 @@ enum OutputLayoutMode {
 	OUTPUT_LAYOUT_VERTICAL,
 };
 
+enum WindowPlacementMode {
+	WINDOW_PLACE_AUTO,
+	WINDOW_PLACE_CENTER,
+	WINDOW_PLACE_CASCADE,
+};
+
 typedef struct KristalServer KristalServer;
 typedef struct KristalOutput KristalOutput;
 typedef struct KristalView KristalView;
@@ -224,6 +230,9 @@ struct KristalServer {
 	enum OutputLayoutMode output_layout_mode;
 	int next_output_x;
 	int next_output_y;
+	enum WindowPlacementMode window_placement_mode;
+	int next_window_x;
+	int next_window_y;
 	XdgOutputManager *xdg_output_mgr;
 	FractionalScaleManager *fractional_scale_mgr;
 	PrimarySelectionManager *primary_selection_mgr;
@@ -277,6 +286,7 @@ struct KristalToplevel {
 	XdgToplevel *xdg_toplevel;
 	bool has_saved_geometry;
 	Box saved_geometry;
+	bool placed;
 	Listener map;
 	Listener unmap;
 	Listener commit;

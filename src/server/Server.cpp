@@ -56,6 +56,37 @@ const char *layout_mode_name(OutputLayoutMode mode) {
 	}
 }
 
+WindowPlacementMode parse_window_placement_mode() {
+	const char *value = getenv("KRISTAL_WINDOW_PLACEMENT");
+	if (value == nullptr || value[0] == '\0' || strcmp(value, "auto") == 0) {
+		return WINDOW_PLACE_AUTO;
+	}
+	if (strcmp(value, "center") == 0) {
+		return WINDOW_PLACE_CENTER;
+	}
+	if (strcmp(value, "cascade") == 0) {
+		return WINDOW_PLACE_CASCADE;
+	}
+
+	wlr_log(
+		WLR_ERROR,
+		"Ignoring invalid KRISTAL_WINDOW_PLACEMENT='%s'; expected auto|center|cascade",
+		value);
+	return WINDOW_PLACE_AUTO;
+}
+
+const char *window_placement_name(WindowPlacementMode mode) {
+	switch (mode) {
+	case WINDOW_PLACE_CENTER:
+		return "center";
+	case WINDOW_PLACE_CASCADE:
+		return "cascade";
+	case WINDOW_PLACE_AUTO:
+	default:
+		return "auto";
+	}
+}
+
 } // namespace
 
 KristalCompositor::KristalCompositor() = default;
@@ -93,11 +124,18 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->output_layout_mode = parse_output_layout_mode();
 	components->next_output_x = 0;
 	components->next_output_y = 0;
+	components->window_placement_mode = parse_window_placement_mode();
+	components->next_window_x = 0;
+	components->next_window_y = 0;
 	wlr_log(
 		WLR_INFO,
 		"Output config: scale=%.2f layout=%s",
 		components->output_scale,
 		layout_mode_name(components->output_layout_mode));
+	wlr_log(
+		WLR_INFO,
+		"Window placement: %s",
+		window_placement_name(components->window_placement_mode));
 	components->xdg_output_mgr =
 		wlr_xdg_output_manager_v1_create(components->display, components->output_layout);
 	components->fractional_scale_mgr =
