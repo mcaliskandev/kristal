@@ -77,6 +77,7 @@ struct ServerComponents {
 	enum OutputLayoutMode output_layout_mode;
 	int next_output_x;
 	int next_output_y;
+	const char *output_config_path;
 	enum WindowPlacementMode window_placement_mode;
 	int next_window_x;
 	int next_window_y;

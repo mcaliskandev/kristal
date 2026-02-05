@@ -31,6 +31,7 @@ Use environment variables before launching:
 
 - `KRISTAL_OUTPUT_SCALE`: floating-point scale factor (default `1.0`)
 - `KRISTAL_OUTPUT_LAYOUT`: `auto` (default), `horizontal`, or `vertical`
+- `KRISTAL_OUTPUTS_STATE`: path to persist per-output scale/transform/position
 - `KRISTAL_WINDOW_PLACEMENT`: `auto` (default), `center`, or `cascade`
 - `KRISTAL_WINDOW_LAYOUT`: `floating` (default) or `stack`
 

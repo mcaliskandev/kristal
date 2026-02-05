@@ -1,9 +1,116 @@
 #include <ctime>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
+
+#include <wayland-client-protocol.h>
 
 #include "internal.h"
 
 namespace {
+
+struct OutputSavedState {
+	bool found = false;
+	bool enabled = true;
+	float scale = 1.0f;
+	int transform = WL_OUTPUT_TRANSFORM_NORMAL;
+	int x = 0;
+	int y = 0;
+};
+
+bool load_output_state(
+	KristalServer *server,
+	const char *name,
+	OutputSavedState *out) {
+	if (server == nullptr || name == nullptr || out == nullptr) {
+		return false;
+	}
+	const char *path = server->output_config_path;
+	if (path == nullptr || path[0] == '\0') {
+		return false;
+	}
+
+	FILE *file = std::fopen(path, "r");
+	if (!file) {
+		return false;
+	}
+
+	char line[256];
+	bool found = false;
+	while (std::fgets(line, sizeof(line), file)) {
+		char output_name[128];
+		int enabled = 0;
+		float scale = 1.0f;
+		int transform = WL_OUTPUT_TRANSFORM_NORMAL;
+		int x = 0;
+		int y = 0;
+		const int fields = std::sscanf(
+			line,
+			"%127s %d %f %d %d %d",
+			output_name,
+			&enabled,
+			&scale,
+			&transform,
+			&x,
+			&y);
+		if (fields != 6) {
+			continue;
+		}
+		if (std::strcmp(output_name, name) != 0) {
+			continue;
+		}
+		if (transform < WL_OUTPUT_TRANSFORM_NORMAL ||
+			transform > WL_OUTPUT_TRANSFORM_FLIPPED_270) {
+			transform = WL_OUTPUT_TRANSFORM_NORMAL;
+		}
+		out->found = true;
+		out->enabled = enabled != 0;
+		out->scale = scale > 0.0f ? scale : 1.0f;
+		out->transform = transform;
+		out->x = x;
+		out->y = y;
+		found = true;
+		break;
+	}
+
+	std::fclose(file);
+	return found;
+}
+
+void save_output_config(KristalServer *server) {
+	if (server == nullptr) {
+		return;
+	}
+	const char *path = server->output_config_path;
+	if (path == nullptr || path[0] == '\0') {
+		return;
+	}
+
+	FILE *file = std::fopen(path, "w");
+	if (!file) {
+		return;
+	}
+
+	KristalOutput *output = nullptr;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output == nullptr) {
+			continue;
+		}
+		Box box{};
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
+		std::fprintf(
+			file,
+			"%s %d %.3f %d %d %d\n",
+			output->wlr_output->name,
+			output->wlr_output->enabled ? 1 : 0,
+			output->wlr_output->scale,
+			output->wlr_output->transform,
+			box.x,
+			box.y);
+	}
+
+	std::fclose(file);
+}
 
 void update_output_manager_config(KristalServer *server) {
 	if (server->output_manager == nullptr) {
@@ -60,6 +167,7 @@ bool apply_output_config(KristalServer *server, wlr_output_configuration_v1 *con
 				head->state.y);
 		}
 		update_output_manager_config(server);
+		save_output_config(server);
 	}
 
 	return true;
@@ -91,6 +199,7 @@ void output_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 	update_output_manager_config(output->server);
+	save_output_config(output->server);
 	delete output;
 }
 
@@ -113,6 +222,13 @@ void server_new_output(Listener *listener, void *data) {
 	if (server->output_scale > 0.0f) {
 		wlr_output_state_set_scale(&state, server->output_scale);
 	}
+	OutputSavedState saved{};
+	if (load_output_state(server, wlr_output->name, &saved) && saved.found) {
+		wlr_output_state_set_enabled(&state, saved.enabled);
+		wlr_output_state_set_scale(&state, saved.scale);
+		wlr_output_state_set_transform(&state,
+			static_cast<enum wl_output_transform>(saved.transform));
+	}
 
 	wlr_output_commit_state(wlr_output, &state);
 	wlr_output_state_finish(&state);
@@ -133,26 +249,35 @@ void server_new_output(Listener *listener, void *data) {
 	wl_list_insert(&server->outputs, &output->link);
 
 	OutputLayoutOutput *layout_output = nullptr;
-	switch (server->output_layout_mode) {
-	case OUTPUT_LAYOUT_HORIZONTAL: {
-		layout_output = wlr_output_layout_add(
-			server->output_layout, wlr_output, server->next_output_x, 0);
-		server->next_output_x += wlr_output->width;
-		break;
-	}
-	case OUTPUT_LAYOUT_VERTICAL: {
-		layout_output = wlr_output_layout_add(
-			server->output_layout, wlr_output, 0, server->next_output_y);
-		server->next_output_y += wlr_output->height;
-		break;
-	}
-	case OUTPUT_LAYOUT_AUTO:
-	default:
-		layout_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
-		break;
+	if (load_output_state(server, wlr_output->name, &saved) && saved.found) {
+		if (saved.enabled) {
+			layout_output = wlr_output_layout_add(
+				server->output_layout, wlr_output, saved.x, saved.y);
+		}
+	} else {
+		switch (server->output_layout_mode) {
+		case OUTPUT_LAYOUT_HORIZONTAL: {
+			layout_output = wlr_output_layout_add(
+				server->output_layout, wlr_output, server->next_output_x, 0);
+			server->next_output_x += wlr_output->width;
+			break;
+		}
+		case OUTPUT_LAYOUT_VERTICAL: {
+			layout_output = wlr_output_layout_add(
+				server->output_layout, wlr_output, 0, server->next_output_y);
+			server->next_output_y += wlr_output->height;
+			break;
+		}
+		case OUTPUT_LAYOUT_AUTO:
+		default:
+			layout_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
+			break;
+		}
 	}
 	auto *scene_output = wlr_scene_output_create(server->scene, wlr_output);
-	wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
+	if (layout_output != nullptr) {
+		wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
+	}
 	update_output_manager_config(server);
 	server_arrange_workspace(server);
 }

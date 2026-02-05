@@ -150,6 +150,7 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->output_layout_mode = parse_output_layout_mode();
 	components->next_output_x = 0;
 	components->next_output_y = 0;
+	components->output_config_path = getenv("KRISTAL_OUTPUTS_STATE");
 	components->window_placement_mode = parse_window_placement_mode();
 	components->next_window_x = 0;
 	components->next_window_y = 0;
@@ -159,6 +160,9 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		"Output config: scale=%.2f layout=%s",
 		components->output_scale,
 		layout_mode_name(components->output_layout_mode));
+	if (components->output_config_path != nullptr && components->output_config_path[0] != '\0') {
+		wlr_log(WLR_INFO, "Output state file: %s", components->output_config_path);
+	}
 	wlr_log(
 		WLR_INFO,
 		"Window placement: %s",
