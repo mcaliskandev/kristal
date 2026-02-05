@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <wayland-client-protocol.h>
+
 namespace {
 
 float parse_output_scale() {
@@ -23,6 +25,62 @@ float parse_output_scale() {
 		return 1.0f;
 	}
 	return scale;
+}
+
+int parse_output_transform() {
+	const char *value = getenv("KRISTAL_OUTPUT_TRANSFORM");
+	if (value == nullptr || value[0] == '\0' || strcmp(value, "normal") == 0) {
+		return WL_OUTPUT_TRANSFORM_NORMAL;
+	}
+	if (strcmp(value, "90") == 0 || strcmp(value, "rotate-90") == 0) {
+		return WL_OUTPUT_TRANSFORM_90;
+	}
+	if (strcmp(value, "180") == 0 || strcmp(value, "rotate-180") == 0) {
+		return WL_OUTPUT_TRANSFORM_180;
+	}
+	if (strcmp(value, "270") == 0 || strcmp(value, "rotate-270") == 0) {
+		return WL_OUTPUT_TRANSFORM_270;
+	}
+	if (strcmp(value, "flipped") == 0) {
+		return WL_OUTPUT_TRANSFORM_FLIPPED;
+	}
+	if (strcmp(value, "flipped-90") == 0) {
+		return WL_OUTPUT_TRANSFORM_FLIPPED_90;
+	}
+	if (strcmp(value, "flipped-180") == 0) {
+		return WL_OUTPUT_TRANSFORM_FLIPPED_180;
+	}
+	if (strcmp(value, "flipped-270") == 0) {
+		return WL_OUTPUT_TRANSFORM_FLIPPED_270;
+	}
+
+	wlr_log(
+		WLR_ERROR,
+		"Ignoring invalid KRISTAL_OUTPUT_TRANSFORM='%s'; expected normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270",
+		value);
+	return WL_OUTPUT_TRANSFORM_NORMAL;
+}
+
+const char *output_transform_name(int transform) {
+	switch (transform) {
+	case WL_OUTPUT_TRANSFORM_90:
+		return "90";
+	case WL_OUTPUT_TRANSFORM_180:
+		return "180";
+	case WL_OUTPUT_TRANSFORM_270:
+		return "270";
+	case WL_OUTPUT_TRANSFORM_FLIPPED:
+		return "flipped";
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+		return "flipped-90";
+	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+		return "flipped-180";
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		return "flipped-270";
+	case WL_OUTPUT_TRANSFORM_NORMAL:
+	default:
+		return "normal";
+	}
 }
 
 OutputLayoutMode parse_output_layout_mode() {
@@ -147,6 +205,7 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 
     CreateOutputLayer();
 	components->output_scale = parse_output_scale();
+	components->output_transform = parse_output_transform();
 	components->output_layout_mode = parse_output_layout_mode();
 	components->next_output_x = 0;
 	components->next_output_y = 0;
@@ -160,6 +219,10 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		"Output config: scale=%.2f layout=%s",
 		components->output_scale,
 		layout_mode_name(components->output_layout_mode));
+	wlr_log(
+		WLR_INFO,
+		"Output transform: %s",
+		output_transform_name(components->output_transform));
 	if (components->output_config_path != nullptr && components->output_config_path[0] != '\0') {
 		wlr_log(WLR_INFO, "Output state file: %s", components->output_config_path);
 	}

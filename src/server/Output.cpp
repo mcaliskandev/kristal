@@ -222,6 +222,9 @@ void server_new_output(Listener *listener, void *data) {
 	if (server->output_scale > 0.0f) {
 		wlr_output_state_set_scale(&state, server->output_scale);
 	}
+	wlr_output_state_set_transform(
+		&state,
+		static_cast<enum wl_output_transform>(server->output_transform));
 	OutputSavedState saved{};
 	if (load_output_state(server, wlr_output->name, &saved) && saved.found) {
 		wlr_output_state_set_enabled(&state, saved.enabled);

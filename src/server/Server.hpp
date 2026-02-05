@@ -74,6 +74,7 @@ struct ServerComponents {
 	List outputs;
 	Listener new_output;
 	float output_scale;
+	int output_transform;
 	enum OutputLayoutMode output_layout_mode;
 	int next_output_x;
 	int next_output_y;
