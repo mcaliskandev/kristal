@@ -2,14 +2,12 @@
 #define SERVER_HPP
 
 #include "internal.h"
-#include "kristal_c_api.h"
 
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
-#include <unistd.h>
 #include <sys/wait.h>
-#include <iostream>
-#include <stdlib.h>
 #include <unistd.h>
 
 struct ServerComponents {
@@ -50,12 +48,12 @@ struct ServerComponents {
 	Listener new_output;
 };
 
-class KristalServer 
+class KristalCompositor 
 {
 public:
-    KristalServer();
+    KristalCompositor();
     void Create();
-    int Run(std::string startup_cmd);
+    int Run(const std::string &startup_cmd);
     void CreateDisplay();
     void CreateBackend();
     void CreateRenderer();

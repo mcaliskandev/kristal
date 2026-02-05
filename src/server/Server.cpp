@@ -1,21 +1,21 @@
 #include "Server.hpp"
 
-KristalServer::KristalServer() = default;
+KristalCompositor::KristalCompositor() = default;
 
-void KristalServer::Create() {
+void KristalCompositor::Create() {
     components = std::make_unique<ServerComponents>();
 }
 
-void KristalServer::Destroy() {
-    components.release();
+void KristalCompositor::Destroy() {
+    components.reset();
 }
 
-int KristalServer::Run(std::string startup_cmd) {
-    if (!components.get()) {
+int KristalCompositor::Run(const std::string &startup_cmd) {
+    if (!components) {
         return 1;
     }
 
-    wlr_log_init(WLR_DEBUG, NULL);
+    wlr_log_init(WLR_DEBUG, nullptr);
 
     CreateDisplay();
     CreateBackend();
@@ -66,7 +66,7 @@ int KristalServer::Run(std::string startup_cmd) {
 	 * Xcursor themes to source cursor images from and makes sure that cursor
 	 * images are available at all scale factors on the screen (necessary for
 	 * HiDPI support). */
-	components->cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+	components->cursor_mgr = wlr_xcursor_manager_create(nullptr, 24);
 
 	/*
 	 * wlr_cursor *only* displays an image on screen. It does not move around
@@ -125,10 +125,10 @@ int KristalServer::Run(std::string startup_cmd) {
 
 	/* Set the WAYLAND_DISPLAY environment variable to our socket and run the
 	 * startup command if requested. */
-	setenv("WAYLAND_DISPLAY", socket, true);
+	setenv("WAYLAND_DISPLAY", socket, 1);
 	if (!startup_cmd.empty()) {
 		if (fork() == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd.c_str(), (void *)NULL);
+			execl("/bin/sh", "/bin/sh", "-c", startup_cmd.c_str(), nullptr);
 		}
 	}
 	/* Run the Wayland event loop. This does not return until you exit the
@@ -153,29 +153,29 @@ int KristalServer::Run(std::string startup_cmd) {
     return 0;
 }
 
-void KristalServer::CreateDisplay() {
+void KristalCompositor::CreateDisplay() {
     components->display = wl_display_create();
 }
 
-void KristalServer::CreateBackend() {
+void KristalCompositor::CreateBackend() {
     components->backend = wlr_backend_autocreate(
-        wl_display_get_event_loop(components->display), NULL);
-    if (components->backend == NULL) {
+        wl_display_get_event_loop(components->display), nullptr);
+    if (components->backend == nullptr) {
         wlr_log(WLR_ERROR, "failed to create wlr_backend");
     }
 }
 
-void KristalServer::CreateRenderer() {
+void KristalCompositor::CreateRenderer() {
     components->renderer = wlr_renderer_autocreate(components->backend);
-    if (components->renderer == NULL) {
+    if (components->renderer == nullptr) {
         wlr_log(WLR_ERROR, "failed to create wlr_renderer");
     }
 }
 
-void KristalServer::CreateAllocator() {
+void KristalCompositor::CreateAllocator() {
     components->allocator = wlr_allocator_autocreate(components->backend, components->renderer);
 }
 
-void KristalServer::CreateOutputLayer() {
+void KristalCompositor::CreateOutputLayer() {
     components->output_layout = wlr_output_layout_create(components->display);
 }

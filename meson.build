@@ -1,4 +1,4 @@
-project('kristal', ['cpp', 'c'], version : '0.1')
+project('kristal', 'cpp', version : '0.1')
 
 # Helper to run pkg-config and expose the handy variables we need.
 pkgconfig = 'pkg-config'
@@ -22,8 +22,8 @@ xkb_dep = dependency('xkbcommon')
 
 executable('kristal',
     sources : ['src/main.cpp', 'src/server/Server.cpp',
-        'src/server/input.c', 'src/server/cursor.c', 'src/server/output.c',
-        'src/server/xdg.c', xdg_shell_protocol_header],
+        'src/server/input.cpp', 'src/server/cursor.cpp', 'src/server/output.cpp',
+        'src/server/xdg.cpp', xdg_shell_protocol_header],
     dependencies : [wlroots_dep, wayland_server_dep, xkb_dep],
     c_args : ['-DWLR_USE_UNSTABLE'],
     cpp_args : ['-DWLR_USE_UNSTABLE'],

@@ -85,12 +85,6 @@ typedef struct KristalToplevel KristalToplevel;
 typedef struct KristalPopup KristalPopup;
 typedef struct KristalKeyboard KristalKeyboard;
 
-/*
- * KristalServer owns the wlroots state required to run the compositor.
- * The full definition is only exposed to C code that needs to reach into the
- * server state directly.
- */
-#ifndef __cplusplus
 struct KristalServer {
 	Display *display;
 	Backend *backend;
@@ -169,8 +163,6 @@ struct KristalKeyboard {
 	Listener key;
 	Listener destroy;
 };
-
-#endif
 
 void focus_toplevel(KristalToplevel *toplevel, Surface *surface);
 void reset_cursor_mode(KristalServer *server);
