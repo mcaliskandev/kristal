@@ -3,11 +3,115 @@
 
 #include "internal.h"
 
+static void save_current_geometry(KristalToplevel *toplevel) {
+	if (toplevel->has_saved_geometry) {
+		return;
+	}
+
+	Box geometry;
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	geometry.x += toplevel->scene_tree->node.x;
+	geometry.y += toplevel->scene_tree->node.y;
+
+	toplevel->saved_geometry = geometry;
+	toplevel->has_saved_geometry = true;
+}
+
+static void restore_saved_geometry(KristalToplevel *toplevel) {
+	if (!toplevel->has_saved_geometry) {
+		return;
+	}
+
+	Box geo_box;
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geo_box);
+	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+		toplevel->saved_geometry.x - geo_box.x,
+		toplevel->saved_geometry.y - geo_box.y);
+	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+		toplevel->saved_geometry.width, toplevel->saved_geometry.height);
+	toplevel->has_saved_geometry = false;
+}
+
+static Output *toplevel_output(KristalToplevel *toplevel) {
+	Output *requested_output = toplevel->xdg_toplevel->requested.fullscreen_output;
+	if (requested_output != NULL &&
+			wlr_output_layout_get(toplevel->server->output_layout, requested_output)) {
+		return requested_output;
+	}
+
+	Box geometry;
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	double center_x = toplevel->scene_tree->node.x + geometry.x + geometry.width / 2.0;
+	double center_y = toplevel->scene_tree->node.y + geometry.y + geometry.height / 2.0;
+
+	Output *layout_output = wlr_output_layout_output_at(
+		toplevel->server->output_layout, center_x, center_y);
+	if (layout_output != NULL) {
+		return layout_output;
+	}
+
+	return wlr_output_layout_get_center_output(toplevel->server->output_layout);
+}
+
+static void arrange_toplevel_on_output(KristalToplevel *toplevel, Output *output) {
+	if (output == NULL) {
+		return;
+	}
+
+	Box output_box;
+	wlr_output_layout_get_box(toplevel->server->output_layout, output, &output_box);
+
+	Box geo_box;
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geo_box);
+	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+		output_box.x - geo_box.x, output_box.y - geo_box.y);
+	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+		output_box.width, output_box.height);
+}
+
+static void apply_maximized_state(KristalToplevel *toplevel, bool maximized) {
+	if (maximized) {
+		if (!toplevel->xdg_toplevel->current.maximized &&
+				!toplevel->xdg_toplevel->current.fullscreen) {
+			save_current_geometry(toplevel);
+		}
+		arrange_toplevel_on_output(toplevel, toplevel_output(toplevel));
+	}
+
+	wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, maximized);
+
+	if (!maximized && !toplevel->xdg_toplevel->requested.fullscreen) {
+		restore_saved_geometry(toplevel);
+	}
+}
+
+static void apply_fullscreen_state(KristalToplevel *toplevel, bool fullscreen) {
+	if (fullscreen) {
+		if (!toplevel->xdg_toplevel->current.maximized &&
+				!toplevel->xdg_toplevel->current.fullscreen) {
+			save_current_geometry(toplevel);
+		}
+		arrange_toplevel_on_output(toplevel, toplevel_output(toplevel));
+	}
+
+	wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, fullscreen);
+
+	if (!fullscreen && !toplevel->xdg_toplevel->requested.maximized) {
+		restore_saved_geometry(toplevel);
+	}
+}
+
 static void xdg_toplevel_map(Listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, map);
 
 	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
+
+	if (toplevel->xdg_toplevel->requested.fullscreen) {
+		apply_fullscreen_state(toplevel, true);
+	} else if (toplevel->xdg_toplevel->requested.maximized) {
+		apply_maximized_state(toplevel, true);
+	}
 
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
@@ -113,26 +217,21 @@ static void xdg_toplevel_request_resize(Listener *listener, void *data) {
 }
 
 static void xdg_toplevel_request_maximize(Listener *listener, void *data) {
-	/* This event is raised when a client would like to maximize itself,
-	 * typically because the user clicked on the maximize button on client-side
-	 * decorations. kristal doesn't support maximization, but to conform to
-	 * xdg-shell protocol we still must send a configure.
-	 * wlr_xdg_surface_schedule_configure() is used to send an empty reply.
-	 * However, if the request was sent before an initial commit, we don't do
-	 * anything and let the client finish the initial surface setup. */
+	/* This event is raised when a client requests a maximized state change. */
 	KristalToplevel *toplevel =
 		wl_container_of(listener, toplevel, request_maximize);
 	if (toplevel->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+		apply_maximized_state(toplevel, toplevel->xdg_toplevel->requested.maximized);
 	}
 }
 
 static void xdg_toplevel_request_fullscreen(Listener *listener, void *data) {
-	/* Just as with request_maximize, we must send a configure here. */
+	/* This event is raised when a client requests a fullscreen state change. */
 	KristalToplevel *toplevel =
 		wl_container_of(listener, toplevel, request_fullscreen);
 	if (toplevel->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+		apply_fullscreen_state(toplevel,
+			toplevel->xdg_toplevel->requested.fullscreen);
 	}
 }
 

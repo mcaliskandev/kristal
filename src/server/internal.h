@@ -143,6 +143,8 @@ struct KristalToplevel {
 	KristalServer *server;
 	XdgToplevel *xdg_toplevel;
 	SceneTree *scene_tree;
+	bool has_saved_geometry;
+	Box saved_geometry;
 	Listener map;
 	Listener unmap;
 	Listener commit;
