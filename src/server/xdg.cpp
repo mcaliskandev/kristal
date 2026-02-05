@@ -1,0 +1,278 @@
+#include <cassert>
+
+#include "internal.h"
+
+namespace {
+
+void save_current_geometry(KristalToplevel *toplevel) {
+	if (toplevel->has_saved_geometry) {
+		return;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	geometry.x += toplevel->scene_tree->node.x;
+	geometry.y += toplevel->scene_tree->node.y;
+
+	toplevel->saved_geometry = geometry;
+	toplevel->has_saved_geometry = true;
+}
+
+void restore_saved_geometry(KristalToplevel *toplevel) {
+	if (!toplevel->has_saved_geometry) {
+		return;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	wlr_scene_node_set_position(
+		&toplevel->scene_tree->node,
+		toplevel->saved_geometry.x - geometry.x,
+		toplevel->saved_geometry.y - geometry.y);
+	wlr_xdg_toplevel_set_size(
+		toplevel->xdg_toplevel,
+		toplevel->saved_geometry.width,
+		toplevel->saved_geometry.height);
+	toplevel->has_saved_geometry = false;
+}
+
+Output *toplevel_output(KristalToplevel *toplevel) {
+	auto *requested_output = toplevel->xdg_toplevel->requested.fullscreen_output;
+	if (requested_output != nullptr &&
+		wlr_output_layout_get(toplevel->server->output_layout, requested_output) != nullptr) {
+		return requested_output;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	const double center_x =
+		toplevel->scene_tree->node.x + geometry.x + geometry.width / 2.0;
+	const double center_y =
+		toplevel->scene_tree->node.y + geometry.y + geometry.height / 2.0;
+
+	auto *layout_output =
+		wlr_output_layout_output_at(toplevel->server->output_layout, center_x, center_y);
+	if (layout_output != nullptr) {
+		return layout_output;
+	}
+
+	return wlr_output_layout_get_center_output(toplevel->server->output_layout);
+}
+
+void arrange_toplevel_on_output(KristalToplevel *toplevel, Output *output) {
+	if (output == nullptr) {
+		return;
+	}
+
+	Box output_box{};
+	wlr_output_layout_get_box(toplevel->server->output_layout, output, &output_box);
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	wlr_scene_node_set_position(
+		&toplevel->scene_tree->node,
+		output_box.x - geometry.x,
+		output_box.y - geometry.y);
+	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, output_box.width, output_box.height);
+}
+
+void apply_maximized_state(KristalToplevel *toplevel, bool maximized) {
+	if (maximized) {
+		if (!toplevel->xdg_toplevel->current.maximized &&
+			!toplevel->xdg_toplevel->current.fullscreen) {
+			save_current_geometry(toplevel);
+		}
+		arrange_toplevel_on_output(toplevel, toplevel_output(toplevel));
+	}
+
+	wlr_xdg_toplevel_set_maximized(toplevel->xdg_toplevel, maximized);
+
+	if (!maximized && !toplevel->xdg_toplevel->requested.fullscreen) {
+		restore_saved_geometry(toplevel);
+	}
+}
+
+void apply_fullscreen_state(KristalToplevel *toplevel, bool fullscreen) {
+	if (fullscreen) {
+		if (!toplevel->xdg_toplevel->current.maximized &&
+			!toplevel->xdg_toplevel->current.fullscreen) {
+			save_current_geometry(toplevel);
+		}
+		arrange_toplevel_on_output(toplevel, toplevel_output(toplevel));
+	}
+
+	wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, fullscreen);
+
+	if (!fullscreen && !toplevel->xdg_toplevel->requested.maximized) {
+		restore_saved_geometry(toplevel);
+	}
+}
+
+void xdg_toplevel_map(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, map);
+	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
+
+	if (toplevel->xdg_toplevel->requested.fullscreen) {
+		apply_fullscreen_state(toplevel, true);
+	} else if (toplevel->xdg_toplevel->requested.maximized) {
+		apply_maximized_state(toplevel, true);
+	}
+
+	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+}
+
+void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, unmap);
+	if (toplevel == toplevel->server->grabbed_toplevel) {
+		reset_cursor_mode(toplevel->server);
+	}
+	wl_list_remove(&toplevel->link);
+}
+
+void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, commit);
+	if (toplevel->xdg_toplevel->base->initial_commit) {
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+	}
+}
+
+void xdg_toplevel_destroy(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
+	wl_list_remove(&toplevel->map.link);
+	wl_list_remove(&toplevel->unmap.link);
+	wl_list_remove(&toplevel->commit.link);
+	wl_list_remove(&toplevel->destroy.link);
+	wl_list_remove(&toplevel->request_move.link);
+	wl_list_remove(&toplevel->request_resize.link);
+	wl_list_remove(&toplevel->request_maximize.link);
+	wl_list_remove(&toplevel->request_fullscreen.link);
+
+	delete toplevel;
+}
+
+void begin_interactive(KristalToplevel *toplevel, CursorMode mode, uint32_t edges) {
+	auto *server = toplevel->server;
+	auto *focused_surface = server->seat->pointer_state.focused_surface;
+	if (focused_surface == nullptr ||
+		toplevel->xdg_toplevel->base->surface != wlr_surface_get_root_surface(focused_surface)) {
+		return;
+	}
+
+	server->grabbed_toplevel = toplevel;
+	server->cursor_mode = mode;
+
+	if (mode == CURSOR_MOVE) {
+		server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
+		server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
+		return;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+
+	const double border_x =
+		(toplevel->scene_tree->node.x + geometry.x) +
+		((edges & WLR_EDGE_RIGHT) ? geometry.width : 0);
+	const double border_y =
+		(toplevel->scene_tree->node.y + geometry.y) +
+		((edges & WLR_EDGE_BOTTOM) ? geometry.height : 0);
+	server->grab_x = server->cursor->x - border_x;
+	server->grab_y = server->cursor->y - border_y;
+
+	server->grab_geobox = geometry;
+	server->grab_geobox.x += toplevel->scene_tree->node.x;
+	server->grab_geobox.y += toplevel->scene_tree->node.y;
+	server->resize_edges = edges;
+}
+
+void xdg_toplevel_request_move(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, request_move);
+	begin_interactive(toplevel, CURSOR_MOVE, 0);
+}
+
+void xdg_toplevel_request_resize(Listener *listener, void *data) {
+	auto *event = static_cast<XdgToplevelResizeEvent *>(data);
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
+	begin_interactive(toplevel, CURSOR_RESIZE, event->edges);
+}
+
+void xdg_toplevel_request_maximize(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, request_maximize);
+	if (toplevel->xdg_toplevel->base->initialized) {
+		apply_maximized_state(toplevel, toplevel->xdg_toplevel->requested.maximized);
+	}
+}
+
+void xdg_toplevel_request_fullscreen(Listener *listener, void * /*data*/) {
+	KristalToplevel *toplevel = wl_container_of(listener, toplevel, request_fullscreen);
+	if (toplevel->xdg_toplevel->base->initialized) {
+		apply_fullscreen_state(toplevel, toplevel->xdg_toplevel->requested.fullscreen);
+	}
+}
+
+void xdg_popup_commit(Listener *listener, void * /*data*/) {
+	KristalPopup *popup = wl_container_of(listener, popup, commit);
+	if (popup->xdg_popup->base->initial_commit) {
+		wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
+	}
+}
+
+void xdg_popup_destroy(Listener *listener, void * /*data*/) {
+	KristalPopup *popup = wl_container_of(listener, popup, destroy);
+	wl_list_remove(&popup->commit.link);
+	wl_list_remove(&popup->destroy.link);
+	delete popup;
+}
+
+} // namespace
+
+void server_new_xdg_toplevel(Listener *listener, void *data) {
+	KristalServer *server = wl_container_of(listener, server, new_xdg_toplevel);
+	auto *xdg_toplevel = static_cast<XdgToplevel *>(data);
+
+	auto *toplevel = new KristalToplevel{};
+	toplevel->server = server;
+	toplevel->xdg_toplevel = xdg_toplevel;
+	toplevel->scene_tree =
+		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
+	toplevel->scene_tree->node.data = toplevel;
+	xdg_toplevel->base->data = toplevel->scene_tree;
+
+	toplevel->map.notify = xdg_toplevel_map;
+	wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
+	toplevel->unmap.notify = xdg_toplevel_unmap;
+	wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &toplevel->unmap);
+	toplevel->commit.notify = xdg_toplevel_commit;
+	wl_signal_add(&xdg_toplevel->base->surface->events.commit, &toplevel->commit);
+
+	toplevel->destroy.notify = xdg_toplevel_destroy;
+	wl_signal_add(&xdg_toplevel->events.destroy, &toplevel->destroy);
+
+	toplevel->request_move.notify = xdg_toplevel_request_move;
+	wl_signal_add(&xdg_toplevel->events.request_move, &toplevel->request_move);
+	toplevel->request_resize.notify = xdg_toplevel_request_resize;
+	wl_signal_add(&xdg_toplevel->events.request_resize, &toplevel->request_resize);
+	toplevel->request_maximize.notify = xdg_toplevel_request_maximize;
+	wl_signal_add(&xdg_toplevel->events.request_maximize, &toplevel->request_maximize);
+	toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
+	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
+}
+
+void server_new_xdg_popup(Listener * /*listener*/, void *data) {
+	auto *xdg_popup = static_cast<XdgPopup *>(data);
+
+	auto *popup = new KristalPopup{};
+	popup->xdg_popup = xdg_popup;
+
+	auto *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+	assert(parent != nullptr);
+	auto *parent_tree = static_cast<SceneTree *>(parent->data);
+	xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
+
+	popup->commit.notify = xdg_popup_commit;
+	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
+
+	popup->destroy.notify = xdg_popup_destroy;
+	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
+}
