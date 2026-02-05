@@ -571,6 +571,7 @@ void server_apply_workspace(KristalServer *server, int workspace) {
 
 	server->focused_surface = nullptr;
 	wlr_seat_keyboard_clear_focus(server->seat);
+	server_text_input_focus(server, nullptr);
 	server_arrange_workspace(server);
 }
 

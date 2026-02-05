@@ -418,6 +418,7 @@ void focus_surface(KristalServer *server, Surface *surface) {
 	}
 
 	update_pointer_constraint(server, surface);
+	server_text_input_focus(server, surface);
 }
 
 void reset_cursor_mode(KristalServer *server) {

@@ -88,6 +88,14 @@ struct ServerComponents {
 	PrimarySelectionManager *primary_selection_mgr;
 	ScreencopyManager *screencopy_mgr;
 	VirtualKeyboardManager *virtual_keyboard_mgr;
+	TextInputManagerV3 *text_input_mgr;
+	InputMethodManagerV2 *input_method_mgr;
+	InputMethodV2 *input_method;
+	TextInputV3 *active_text_input;
+	Listener new_text_input;
+	Listener new_input_method;
+	Listener input_method_commit;
+	Listener input_method_destroy;
 	struct wlr_output_manager_v1 *output_manager;
 	Listener output_manager_apply;
 	Listener output_manager_test;

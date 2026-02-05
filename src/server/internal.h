@@ -41,6 +41,14 @@ extern "C" {
 #include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_touch.h>
+#include <wlr/types/wlr_text_input_v3.h>
+#ifdef __cplusplus
+#define delete delete_
+#endif
+#include <wlr/types/wlr_input_method_v2.h>
+#ifdef __cplusplus
+#undef delete
+#endif
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
@@ -116,6 +124,10 @@ typedef struct wlr_fractional_scale_manager_v1 FractionalScaleManager;
 typedef struct wlr_primary_selection_v1_device_manager PrimarySelectionManager;
 typedef struct wlr_screencopy_manager_v1 ScreencopyManager;
 typedef struct wlr_virtual_keyboard_manager_v1 VirtualKeyboardManager;
+typedef struct wlr_text_input_manager_v3 TextInputManagerV3;
+typedef struct wlr_text_input_v3 TextInputV3;
+typedef struct wlr_input_method_manager_v2 InputMethodManagerV2;
+typedef struct wlr_input_method_v2 InputMethodV2;
 #ifdef KRISTAL_HAVE_XWAYLAND
 typedef struct wlr_xwayland Xwayland;
 typedef struct wlr_xwayland_surface XwaylandSurface;
@@ -246,6 +258,14 @@ struct KristalServer {
 	PrimarySelectionManager *primary_selection_mgr;
 	ScreencopyManager *screencopy_mgr;
 	VirtualKeyboardManager *virtual_keyboard_mgr;
+	TextInputManagerV3 *text_input_mgr;
+	InputMethodManagerV2 *input_method_mgr;
+	InputMethodV2 *input_method;
+	TextInputV3 *active_text_input;
+	Listener new_text_input;
+	Listener new_input_method;
+	Listener input_method_commit;
+	Listener input_method_destroy;
 	struct wlr_output_manager_v1 *output_manager;
 	Listener output_manager_apply;
 	Listener output_manager_test;
@@ -380,6 +400,7 @@ void server_move_focused_to_workspace(KristalServer *server, int workspace);
 void server_close_focused(KristalServer *server);
 void server_update_output_manager_config(KristalServer *server);
 void server_arrange_workspace(KristalServer *server);
+void server_text_input_focus(KristalServer *server, Surface *surface);
 
 void server_new_output(Listener *listener, void *data);
 void server_cursor_motion(Listener *listener, void *data);
@@ -414,6 +435,10 @@ void server_output_manager_test(Listener *listener, void *data);
 void server_new_toplevel_decoration(Listener *listener, void *data);
 void server_request_activate(Listener *listener, void *data);
 void server_new_idle_inhibitor(Listener *listener, void *data);
+void server_new_text_input(Listener *listener, void *data);
+void server_new_input_method(Listener *listener, void *data);
+void server_input_method_commit(Listener *listener, void *data);
+void server_input_method_destroy(Listener *listener, void *data);
 #ifdef KRISTAL_HAVE_XWAYLAND
 void server_xwayland_ready(Listener *listener, void *data);
 void server_new_xwayland_surface(Listener *listener, void *data);
