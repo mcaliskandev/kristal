@@ -11,8 +11,8 @@ void save_current_geometry(KristalToplevel *toplevel) {
 
 	Box geometry{};
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
-	geometry.x += toplevel->scene_tree->node.x;
-	geometry.y += toplevel->scene_tree->node.y;
+	geometry.x += toplevel->view.scene_tree->node.x;
+	geometry.y += toplevel->view.scene_tree->node.y;
 
 	toplevel->saved_geometry = geometry;
 	toplevel->has_saved_geometry = true;
@@ -26,7 +26,7 @@ void restore_saved_geometry(KristalToplevel *toplevel) {
 	Box geometry{};
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
 	wlr_scene_node_set_position(
-		&toplevel->scene_tree->node,
+		&toplevel->view.scene_tree->node,
 		toplevel->saved_geometry.x - geometry.x,
 		toplevel->saved_geometry.y - geometry.y);
 	wlr_xdg_toplevel_set_size(
@@ -39,24 +39,24 @@ void restore_saved_geometry(KristalToplevel *toplevel) {
 Output *toplevel_output(KristalToplevel *toplevel) {
 	auto *requested_output = toplevel->xdg_toplevel->requested.fullscreen_output;
 	if (requested_output != nullptr &&
-		wlr_output_layout_get(toplevel->server->output_layout, requested_output) != nullptr) {
+		wlr_output_layout_get(toplevel->view.server->output_layout, requested_output) != nullptr) {
 		return requested_output;
 	}
 
 	Box geometry{};
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
 	const double center_x =
-		toplevel->scene_tree->node.x + geometry.x + geometry.width / 2.0;
+		toplevel->view.scene_tree->node.x + geometry.x + geometry.width / 2.0;
 	const double center_y =
-		toplevel->scene_tree->node.y + geometry.y + geometry.height / 2.0;
+		toplevel->view.scene_tree->node.y + geometry.y + geometry.height / 2.0;
 
 	auto *layout_output =
-		wlr_output_layout_output_at(toplevel->server->output_layout, center_x, center_y);
+		wlr_output_layout_output_at(toplevel->view.server->output_layout, center_x, center_y);
 	if (layout_output != nullptr) {
 		return layout_output;
 	}
 
-	return wlr_output_layout_get_center_output(toplevel->server->output_layout);
+	return wlr_output_layout_get_center_output(toplevel->view.server->output_layout);
 }
 
 void arrange_toplevel_on_output(KristalToplevel *toplevel, Output *output) {
@@ -65,12 +65,12 @@ void arrange_toplevel_on_output(KristalToplevel *toplevel, Output *output) {
 	}
 
 	Box output_box{};
-	wlr_output_layout_get_box(toplevel->server->output_layout, output, &output_box);
+	wlr_output_layout_get_box(toplevel->view.server->output_layout, output, &output_box);
 
 	Box geometry{};
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
 	wlr_scene_node_set_position(
-		&toplevel->scene_tree->node,
+		&toplevel->view.scene_tree->node,
 		output_box.x - geometry.x,
 		output_box.y - geometry.y);
 	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, output_box.width, output_box.height);
@@ -110,7 +110,11 @@ void apply_fullscreen_state(KristalToplevel *toplevel, bool fullscreen) {
 
 void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, map);
-	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
+	toplevel->view.mapped = true;
+	wl_list_insert(&toplevel->view.server->views, &toplevel->view.link);
+	wlr_scene_node_set_enabled(
+		&toplevel->view.scene_tree->node,
+		toplevel->view.workspace == toplevel->view.server->current_workspace);
 
 	if (toplevel->xdg_toplevel->requested.fullscreen) {
 		apply_fullscreen_state(toplevel, true);
@@ -123,10 +127,11 @@ void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 
 void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, unmap);
-	if (toplevel == toplevel->server->grabbed_toplevel) {
-		reset_cursor_mode(toplevel->server);
+	if (toplevel == toplevel->view.server->grabbed_toplevel) {
+		reset_cursor_mode(toplevel->view.server);
 	}
-	wl_list_remove(&toplevel->link);
+	toplevel->view.mapped = false;
+	wl_list_remove(&toplevel->view.link);
 }
 
 void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
@@ -147,12 +152,15 @@ void xdg_toplevel_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&toplevel->request_resize.link);
 	wl_list_remove(&toplevel->request_maximize.link);
 	wl_list_remove(&toplevel->request_fullscreen.link);
+	if (toplevel->view.mapped) {
+		wl_list_remove(&toplevel->view.link);
+	}
 
 	delete toplevel;
 }
 
 void begin_interactive(KristalToplevel *toplevel, CursorMode mode, uint32_t edges) {
-	auto *server = toplevel->server;
+	auto *server = toplevel->view.server;
 	auto *focused_surface = server->seat->pointer_state.focused_surface;
 	if (focused_surface == nullptr ||
 		toplevel->xdg_toplevel->base->surface != wlr_surface_get_root_surface(focused_surface)) {
@@ -163,8 +171,8 @@ void begin_interactive(KristalToplevel *toplevel, CursorMode mode, uint32_t edge
 	server->cursor_mode = mode;
 
 	if (mode == CURSOR_MOVE) {
-		server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
-		server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
+		server->grab_x = server->cursor->x - toplevel->view.scene_tree->node.x;
+		server->grab_y = server->cursor->y - toplevel->view.scene_tree->node.y;
 		return;
 	}
 
@@ -172,17 +180,17 @@ void begin_interactive(KristalToplevel *toplevel, CursorMode mode, uint32_t edge
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
 
 	const double border_x =
-		(toplevel->scene_tree->node.x + geometry.x) +
+		(toplevel->view.scene_tree->node.x + geometry.x) +
 		((edges & WLR_EDGE_RIGHT) ? geometry.width : 0);
 	const double border_y =
-		(toplevel->scene_tree->node.y + geometry.y) +
+		(toplevel->view.scene_tree->node.y + geometry.y) +
 		((edges & WLR_EDGE_BOTTOM) ? geometry.height : 0);
 	server->grab_x = server->cursor->x - border_x;
 	server->grab_y = server->cursor->y - border_y;
 
 	server->grab_geobox = geometry;
-	server->grab_geobox.x += toplevel->scene_tree->node.x;
-	server->grab_geobox.y += toplevel->scene_tree->node.y;
+	server->grab_geobox.x += toplevel->view.scene_tree->node.x;
+	server->grab_geobox.y += toplevel->view.scene_tree->node.y;
 	server->resize_edges = edges;
 }
 
@@ -232,12 +240,15 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 	auto *xdg_toplevel = static_cast<XdgToplevel *>(data);
 
 	auto *toplevel = new KristalToplevel{};
-	toplevel->server = server;
+	toplevel->view.server = server;
+	toplevel->view.type = KRISTAL_VIEW_XDG;
+	toplevel->view.workspace = server->current_workspace;
+	toplevel->view.mapped = false;
 	toplevel->xdg_toplevel = xdg_toplevel;
-	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
-	toplevel->scene_tree->node.data = toplevel;
-	xdg_toplevel->base->data = toplevel->scene_tree;
+	toplevel->view.scene_tree =
+		wlr_scene_xdg_surface_create(&toplevel->view.server->scene->tree, xdg_toplevel->base);
+	toplevel->view.scene_tree->node.data = &toplevel->view;
+	xdg_toplevel->base->data = toplevel->view.scene_tree;
 
 	toplevel->map.notify = xdg_toplevel_map;
 	wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);

@@ -1,8 +1,69 @@
 #include <ctime>
+#include <cstdlib>
 
 #include "internal.h"
 
 namespace {
+
+void update_output_manager_config(KristalServer *server) {
+	if (server->output_manager == nullptr) {
+		return;
+	}
+
+	auto *config = wlr_output_configuration_v1_create();
+	KristalOutput *output = nullptr;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (output->wlr_output == nullptr) {
+			continue;
+		}
+		auto *head = wlr_output_configuration_head_v1_create(config, output->wlr_output);
+		Box box{};
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output, &box);
+		head->state.x = box.x;
+		head->state.y = box.y;
+	}
+
+	wlr_output_manager_v1_set_configuration(server->output_manager, config);
+}
+
+bool apply_output_config(KristalServer *server, wlr_output_configuration_v1 *config, bool test) {
+	size_t states_len = 0;
+	struct wlr_backend_output_state *states =
+		wlr_output_configuration_v1_build_state(config, &states_len);
+	if (states == nullptr) {
+		return false;
+	}
+
+	bool ok = false;
+	if (test) {
+		ok = wlr_backend_test(server->backend, states, states_len);
+	} else {
+		ok = wlr_backend_commit(server->backend, states, states_len);
+	}
+	free(states);
+
+	if (!ok) {
+		return false;
+	}
+
+	if (!test) {
+		struct wlr_output_configuration_head_v1 *head = nullptr;
+		wl_list_for_each(head, &config->heads, link) {
+			if (!head->state.enabled) {
+				wlr_output_layout_remove(server->output_layout, head->state.output);
+				continue;
+			}
+			wlr_output_layout_add(
+				server->output_layout,
+				head->state.output,
+				head->state.x,
+				head->state.y);
+		}
+		update_output_manager_config(server);
+	}
+
+	return true;
+}
 
 void output_frame(Listener *listener, void * /*data*/) {
 	KristalOutput *output = wl_container_of(listener, output, frame);
@@ -29,6 +90,7 @@ void output_destroy(Listener *listener, void * /*data*/) {
 	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
+	update_output_manager_config(output->server);
 	delete output;
 }
 
@@ -91,4 +153,31 @@ void server_new_output(Listener *listener, void *data) {
 	}
 	auto *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
+	update_output_manager_config(server);
+}
+
+void server_output_manager_apply(Listener *listener, void *data) {
+	KristalServer *server = wl_container_of(listener, server, output_manager_apply);
+	auto *config = static_cast<wlr_output_configuration_v1 *>(data);
+	if (apply_output_config(server, config, false)) {
+		wlr_output_configuration_v1_send_succeeded(config);
+	} else {
+		wlr_output_configuration_v1_send_failed(config);
+	}
+	wlr_output_configuration_v1_destroy(config);
+}
+
+void server_output_manager_test(Listener *listener, void *data) {
+	KristalServer *server = wl_container_of(listener, server, output_manager_test);
+	auto *config = static_cast<wlr_output_configuration_v1 *>(data);
+	if (apply_output_config(server, config, true)) {
+		wlr_output_configuration_v1_send_succeeded(config);
+	} else {
+		wlr_output_configuration_v1_send_failed(config);
+	}
+	wlr_output_configuration_v1_destroy(config);
+}
+
+void server_update_output_manager_config(KristalServer *server) {
+	update_output_manager_config(server);
 }

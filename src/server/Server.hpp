@@ -15,6 +15,7 @@ struct ServerComponents {
 	Backend *backend;
 	Renderer *renderer;
 	Allocator *allocator;
+	Compositor *compositor;
 	Scene *scene;
 	SceneOutputLayout *scene_layout;
 
@@ -23,7 +24,7 @@ struct ServerComponents {
 	Listener new_xdg_popup;
 	LayerShell *layer_shell;
 	Listener new_layer_surface;
-	List toplevels;
+	List views;
 	List layer_surfaces;
 
 	Cursor *cursor;
@@ -33,14 +34,37 @@ struct ServerComponents {
 	Listener cursor_button;
 	Listener cursor_axis;
 	Listener cursor_frame;
+	Listener cursor_swipe_begin;
+	Listener cursor_swipe_update;
+	Listener cursor_swipe_end;
+	Listener cursor_pinch_begin;
+	Listener cursor_pinch_update;
+	Listener cursor_pinch_end;
+	Listener cursor_hold_begin;
+	Listener cursor_hold_end;
+	Listener cursor_touch_down;
+	Listener cursor_touch_up;
+	Listener cursor_touch_motion;
+	Listener cursor_touch_cancel;
+	Listener cursor_touch_frame;
+	Listener cursor_tablet_axis;
+	Listener cursor_tablet_proximity;
+	Listener cursor_tablet_tip;
+	Listener cursor_tablet_button;
 
 	Seat *seat;
 	Listener new_input;
 	Listener request_cursor;
 	Listener request_set_selection;
+	Surface *focused_surface;
 	List keyboards;
+	List tablets;
+	List tablet_tools;
+	List switches;
 	enum CursorMode cursor_mode;
+	int touch_device_count;
 	KristalToplevel *grabbed_toplevel;
+	KristalXwaylandSurface *grabbed_xwayland;
 	double grab_x;
 	double grab_y;
 	Box grab_geobox;
@@ -58,6 +82,29 @@ struct ServerComponents {
 	PrimarySelectionManager *primary_selection_mgr;
 	ScreencopyManager *screencopy_mgr;
 	VirtualKeyboardManager *virtual_keyboard_mgr;
+	struct wlr_output_manager_v1 *output_manager;
+	Listener output_manager_apply;
+	Listener output_manager_test;
+	XdgDecorationManager *decoration_mgr;
+	Listener new_toplevel_decoration;
+	XdgActivation *activation_mgr;
+	Listener request_activate;
+	PointerConstraints *pointer_constraints;
+	Listener new_pointer_constraint;
+	PointerConstraint *active_constraint;
+	RelativePointerManager *relative_pointer_mgr;
+	PointerGestures *pointer_gestures;
+	struct wlr_idle_notifier_v1 *idle_notifier;
+	struct wlr_idle_inhibit_manager_v1 *idle_inhibit_mgr;
+	Listener new_idle_inhibitor;
+	TabletManagerV2 *tablet_manager;
+#ifdef KRISTAL_HAVE_XWAYLAND
+	Xwayland *xwayland;
+	Listener xwayland_ready;
+	Listener xwayland_new_surface;
+#endif
+	int current_workspace;
+	int workspace_count;
 };
 
 class KristalCompositor 

@@ -83,7 +83,8 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 
     CreateAllocator();
 
-    wlr_compositor_create(components->display, 5, components->renderer);
+    components->compositor = wlr_compositor_create(
+		components->display, 5, components->renderer);
 	wlr_subcompositor_create(components->display);
 	wlr_data_device_manager_create(components->display);
 
@@ -117,7 +118,7 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	 * used for application windows. For more detail on shells, refer to
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
-	wl_list_init(&components->toplevels);
+	wl_list_init(&components->views);
 	components->xdg_shell = wlr_xdg_shell_create(components->display, 3);
 	components->new_xdg_toplevel.notify = server_new_xdg_toplevel;
 	wl_signal_add(&components->xdg_shell->events.new_toplevel,
@@ -134,6 +135,14 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 #else
 	components->layer_shell = nullptr;
 #endif
+	components->decoration_mgr = wlr_xdg_decoration_manager_v1_create(components->display);
+	components->new_toplevel_decoration.notify = server_new_toplevel_decoration;
+	wl_signal_add(&components->decoration_mgr->events.new_toplevel_decoration,
+		&components->new_toplevel_decoration);
+	components->activation_mgr = wlr_xdg_activation_v1_create(components->display);
+	components->request_activate.notify = server_request_activate;
+	wl_signal_add(&components->activation_mgr->events.request_activate,
+		&components->request_activate);
 
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
@@ -170,6 +179,44 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	wl_signal_add(&components->cursor->events.axis, &components->cursor_axis);
 	components->cursor_frame.notify = server_cursor_frame;
 	wl_signal_add(&components->cursor->events.frame, &components->cursor_frame);
+	components->cursor_swipe_begin.notify = server_cursor_swipe_begin;
+	wl_signal_add(&components->cursor->events.swipe_begin, &components->cursor_swipe_begin);
+	components->cursor_swipe_update.notify = server_cursor_swipe_update;
+	wl_signal_add(&components->cursor->events.swipe_update, &components->cursor_swipe_update);
+	components->cursor_swipe_end.notify = server_cursor_swipe_end;
+	wl_signal_add(&components->cursor->events.swipe_end, &components->cursor_swipe_end);
+	components->cursor_pinch_begin.notify = server_cursor_pinch_begin;
+	wl_signal_add(&components->cursor->events.pinch_begin, &components->cursor_pinch_begin);
+	components->cursor_pinch_update.notify = server_cursor_pinch_update;
+	wl_signal_add(&components->cursor->events.pinch_update, &components->cursor_pinch_update);
+	components->cursor_pinch_end.notify = server_cursor_pinch_end;
+	wl_signal_add(&components->cursor->events.pinch_end, &components->cursor_pinch_end);
+	components->cursor_hold_begin.notify = server_cursor_hold_begin;
+	wl_signal_add(&components->cursor->events.hold_begin, &components->cursor_hold_begin);
+	components->cursor_hold_end.notify = server_cursor_hold_end;
+	wl_signal_add(&components->cursor->events.hold_end, &components->cursor_hold_end);
+	components->cursor_touch_down.notify = server_cursor_touch_down;
+	wl_signal_add(&components->cursor->events.touch_down, &components->cursor_touch_down);
+	components->cursor_touch_up.notify = server_cursor_touch_up;
+	wl_signal_add(&components->cursor->events.touch_up, &components->cursor_touch_up);
+	components->cursor_touch_motion.notify = server_cursor_touch_motion;
+	wl_signal_add(&components->cursor->events.touch_motion, &components->cursor_touch_motion);
+	components->cursor_touch_cancel.notify = server_cursor_touch_cancel;
+	wl_signal_add(&components->cursor->events.touch_cancel, &components->cursor_touch_cancel);
+	components->cursor_touch_frame.notify = server_cursor_touch_frame;
+	wl_signal_add(&components->cursor->events.touch_frame, &components->cursor_touch_frame);
+	components->cursor_tablet_axis.notify = server_cursor_tablet_axis;
+	wl_signal_add(&components->cursor->events.tablet_tool_axis, &components->cursor_tablet_axis);
+	components->cursor_tablet_proximity.notify = server_cursor_tablet_proximity;
+	wl_signal_add(
+		&components->cursor->events.tablet_tool_proximity,
+		&components->cursor_tablet_proximity);
+	components->cursor_tablet_tip.notify = server_cursor_tablet_tip;
+	wl_signal_add(&components->cursor->events.tablet_tool_tip, &components->cursor_tablet_tip);
+	components->cursor_tablet_button.notify = server_cursor_tablet_button;
+	wl_signal_add(
+		&components->cursor->events.tablet_tool_button,
+		&components->cursor_tablet_button);
 
 	/*
 	 * Configures a seat, which is a single "seat" at which a user sits and
@@ -178,6 +225,9 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	 * let us know when new input devices are available on the backend.
 	 */
 	wl_list_init(&components->keyboards);
+	wl_list_init(&components->tablets);
+	wl_list_init(&components->tablet_tools);
+	wl_list_init(&components->switches);
 	components->new_input.notify = server_new_input;
 	wl_signal_add(&components->backend->events.new_input, &components->new_input);
 	components->seat = wlr_seat_create(components->display, "seat0");
@@ -192,6 +242,47 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->screencopy_mgr = wlr_screencopy_manager_v1_create(components->display);
 	components->virtual_keyboard_mgr =
 		wlr_virtual_keyboard_manager_v1_create(components->display);
+	components->pointer_constraints = wlr_pointer_constraints_v1_create(components->display);
+	components->new_pointer_constraint.notify = server_new_pointer_constraint;
+	wl_signal_add(
+		&components->pointer_constraints->events.new_constraint,
+		&components->new_pointer_constraint);
+	components->relative_pointer_mgr =
+		wlr_relative_pointer_manager_v1_create(components->display);
+	components->pointer_gestures = wlr_pointer_gestures_v1_create(components->display);
+	components->idle_notifier = wlr_idle_notifier_v1_create(components->display);
+	components->idle_inhibit_mgr = wlr_idle_inhibit_v1_create(components->display);
+	components->new_idle_inhibitor.notify = server_new_idle_inhibitor;
+	wl_signal_add(
+		&components->idle_inhibit_mgr->events.new_inhibitor,
+		&components->new_idle_inhibitor);
+	components->tablet_manager = wlr_tablet_v2_create(components->display);
+	components->output_manager = wlr_output_manager_v1_create(components->display);
+	components->output_manager_apply.notify = server_output_manager_apply;
+	wl_signal_add(&components->output_manager->events.apply,
+		&components->output_manager_apply);
+	components->output_manager_test.notify = server_output_manager_test;
+	wl_signal_add(&components->output_manager->events.test,
+		&components->output_manager_test);
+	components->active_constraint = nullptr;
+	components->focused_surface = nullptr;
+	components->grabbed_xwayland = nullptr;
+	components->touch_device_count = 0;
+	components->current_workspace = 1;
+	components->workspace_count = 9;
+#ifdef KRISTAL_HAVE_XWAYLAND
+	components->xwayland = wlr_xwayland_create(
+		components->display, components->compositor, true);
+	if (components->xwayland != nullptr) {
+		components->xwayland_ready.notify = server_xwayland_ready;
+		wl_signal_add(&components->xwayland->events.ready, &components->xwayland_ready);
+		components->xwayland_new_surface.notify = server_new_xwayland_surface;
+		wl_signal_add(
+			&components->xwayland->events.new_surface,
+			&components->xwayland_new_surface);
+		wlr_xwayland_set_seat(components->xwayland, components->seat);
+	}
+#endif
 
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(components->display);
@@ -228,6 +319,11 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	 * server. */
 	wl_display_destroy_clients(components->display);
 	wlr_scene_node_destroy(&components->scene->tree.node);
+#ifdef KRISTAL_HAVE_XWAYLAND
+	if (components->xwayland != nullptr) {
+		wlr_xwayland_destroy(components->xwayland);
+	}
+#endif
 	wlr_xcursor_manager_destroy(components->cursor_mgr);
 	wlr_cursor_destroy(components->cursor);
 	wlr_allocator_destroy(components->allocator);
