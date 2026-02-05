@@ -66,17 +66,17 @@ Implemented:
 - [x] Pointer constraints + relative pointer (lock/confine pointer for games)
 - [x] Idle + idle-inhibit handling (screensaver/lock integration)
 
-Missing (main compositor features):
-- [ ] Window placement policy (initial position, centering, and simple rules)
-- [ ] Interactive move/resize bindings (e.g., mod+drag, mod+right-drag)
-- [ ] Tiling layout option or at least simple auto-tiling
-- [ ] Per-output configuration persistence (scale/transform/position saved and restored)
-- [ ] Output transforms (rotation/flip) exposed via config or management protocol
-- [ ] Input configuration (keymap/layout, repeat rate, libinput options like tap-to-click)
-- [ ] Text input / IME support (`zwp_text_input_v3`, virtual keyboard integration)
-- [ ] Foreign toplevel management (`wlr-foreign-toplevel-management`) for panels/task switchers
-- [ ] Data-control protocol (`wlr-data-control`) for clipboard managers
-- [ ] Session lock protocol (`ext-session-lock-v1`) for screen lock integration
+Implemented (recent):
+- [x] Window placement policy (initial position, centering, and simple rules)
+- [x] Interactive move/resize bindings (e.g., mod+drag, mod+right-drag)
+- [x] Tiling layout option or at least simple auto-tiling
+- [x] Per-output configuration persistence (scale/transform/position saved and restored)
+- [x] Output transforms (rotation/flip) exposed via config or management protocol
+- [x] Input configuration (keymap/layout, repeat rate, libinput options like tap-to-click)
+- [x] Text input / IME support (`zwp_text_input_v3`, virtual keyboard integration)
+- [x] Foreign toplevel management (`wlr-foreign-toplevel-management`) for panels/task switchers
+- [x] Data-control protocol (`wlr-data-control`) for clipboard managers
+- [x] Session lock protocol (`ext-session-lock-v1`) for screen lock integration
 
 Note: layer-shell support is built only when the wlroots protocol headers are
 available (the `wlr-layer-shell-unstable-v1-protocol.h` header from
