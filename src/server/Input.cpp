@@ -103,6 +103,69 @@ KristalView *next_view_in_workspace(KristalServer *server) {
 	return nullptr;
 }
 
+bool view_is_tiled_candidate(KristalView *view) {
+	if (view == nullptr || !view->mapped) {
+		return false;
+	}
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		if (toplevel->xdg_toplevel->current.fullscreen ||
+			toplevel->xdg_toplevel->current.maximized) {
+			return false;
+		}
+		return true;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface != nullptr && xsurface->xwayland_surface->fullscreen) {
+		return false;
+	}
+	return xsurface->xwayland_surface != nullptr;
+#else
+	return false;
+#endif
+}
+
+void apply_tiled_geometry(
+	KristalView *view,
+	const Box &output_box,
+	int index,
+	int count) {
+	const int base_height = output_box.height / count;
+	const int extra_height = output_box.height - base_height * count;
+	const int height = base_height + (index == count - 1 ? extra_height : 0);
+	const int width = output_box.width;
+	const int x = output_box.x;
+	const int y = output_box.y + index * base_height;
+
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		Box geometry{};
+		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+		wlr_scene_node_set_position(
+			&toplevel->view.scene_tree->node,
+			x - geometry.x,
+			y - geometry.y);
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+		return;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface == nullptr) {
+		return;
+	}
+	wlr_xwayland_surface_configure(
+		xsurface->xwayland_surface,
+		x,
+		y,
+		width,
+		height);
+	if (xsurface->view.scene_tree != nullptr) {
+		wlr_scene_node_set_position(&xsurface->view.scene_tree->node, x, y);
+	}
+#endif
+}
+
 struct KristalConstraintHandle {
 	KristalServer *server;
 	PointerConstraint *constraint;
@@ -410,6 +473,7 @@ void server_apply_workspace(KristalServer *server, int workspace) {
 
 	server->focused_surface = nullptr;
 	wlr_seat_keyboard_clear_focus(server->seat);
+	server_arrange_workspace(server);
 }
 
 void server_move_focused_to_workspace(KristalServer *server, int workspace) {
@@ -425,6 +489,7 @@ void server_move_focused_to_workspace(KristalServer *server, int workspace) {
 	view->workspace = workspace;
 	const bool visible = view->mapped && view->workspace == server->current_workspace;
 	wlr_scene_node_set_enabled(&view->scene_tree->node, visible);
+	server_arrange_workspace(server);
 }
 
 void server_close_focused(KristalServer *server) {
@@ -445,4 +510,47 @@ void server_close_focused(KristalServer *server) {
 		wlr_xwayland_surface_close(xsurface);
 	}
 #endif
+}
+
+void server_arrange_workspace(KristalServer *server) {
+	if (server == nullptr || server->window_layout_mode != WINDOW_LAYOUT_STACK) {
+		return;
+	}
+
+	auto *output = wlr_output_layout_get_center_output(server->output_layout);
+	if (output == nullptr) {
+		return;
+	}
+
+	Box output_box{};
+	wlr_output_layout_get_box(server->output_layout, output, &output_box);
+	if (output_box.width <= 0 || output_box.height <= 0) {
+		return;
+	}
+
+	int count = 0;
+	KristalView *view = nullptr;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != server->current_workspace) {
+			continue;
+		}
+		if (view_is_tiled_candidate(view)) {
+			count++;
+		}
+	}
+	if (count == 0) {
+		return;
+	}
+
+	int index = 0;
+	wl_list_for_each(view, &server->views, link) {
+		if (view->workspace != server->current_workspace) {
+			continue;
+		}
+		if (!view_is_tiled_candidate(view)) {
+			continue;
+		}
+		apply_tiled_geometry(view, output_box, index, count);
+		index++;
+	}
 }

@@ -61,6 +61,7 @@ void xwayland_surface_map(Listener *listener, void * /*data*/) {
 	if (surface->xwayland_surface->surface != nullptr) {
 		focus_surface(surface->view.server, surface->xwayland_surface->surface);
 	}
+	server_arrange_workspace(surface->view.server);
 }
 
 void xwayland_surface_unmap(Listener *listener, void * /*data*/) {
@@ -73,6 +74,7 @@ void xwayland_surface_unmap(Listener *listener, void * /*data*/) {
 	if (surface->view.server->grabbed_xwayland == surface) {
 		reset_cursor_mode(surface->view.server);
 	}
+	server_arrange_workspace(surface->view.server);
 }
 
 void xwayland_surface_associate(Listener *listener, void * /*data*/) {

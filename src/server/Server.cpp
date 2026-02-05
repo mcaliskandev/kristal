@@ -87,6 +87,32 @@ const char *window_placement_name(WindowPlacementMode mode) {
 	}
 }
 
+WindowLayoutMode parse_window_layout_mode() {
+	const char *value = getenv("KRISTAL_WINDOW_LAYOUT");
+	if (value == nullptr || value[0] == '\0' || strcmp(value, "floating") == 0) {
+		return WINDOW_LAYOUT_FLOATING;
+	}
+	if (strcmp(value, "stack") == 0) {
+		return WINDOW_LAYOUT_STACK;
+	}
+
+	wlr_log(
+		WLR_ERROR,
+		"Ignoring invalid KRISTAL_WINDOW_LAYOUT='%s'; expected floating|stack",
+		value);
+	return WINDOW_LAYOUT_FLOATING;
+}
+
+const char *window_layout_name(WindowLayoutMode mode) {
+	switch (mode) {
+	case WINDOW_LAYOUT_STACK:
+		return "stack";
+	case WINDOW_LAYOUT_FLOATING:
+	default:
+		return "floating";
+	}
+}
+
 } // namespace
 
 KristalCompositor::KristalCompositor() = default;
@@ -127,6 +153,7 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->window_placement_mode = parse_window_placement_mode();
 	components->next_window_x = 0;
 	components->next_window_y = 0;
+	components->window_layout_mode = parse_window_layout_mode();
 	wlr_log(
 		WLR_INFO,
 		"Output config: scale=%.2f layout=%s",
@@ -136,6 +163,10 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		WLR_INFO,
 		"Window placement: %s",
 		window_placement_name(components->window_placement_mode));
+	wlr_log(
+		WLR_INFO,
+		"Window layout: %s",
+		window_layout_name(components->window_layout_mode));
 	components->xdg_output_mgr =
 		wlr_xdg_output_manager_v1_create(components->display, components->output_layout);
 	components->fractional_scale_mgr =

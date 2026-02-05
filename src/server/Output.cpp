@@ -154,6 +154,7 @@ void server_new_output(Listener *listener, void *data) {
 	auto *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
 	update_output_manager_config(server);
+	server_arrange_workspace(server);
 }
 
 void server_output_manager_apply(Listener *listener, void *data) {

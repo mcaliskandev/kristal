@@ -212,6 +212,7 @@ void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 	}
 
 	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+	server_arrange_workspace(toplevel->view.server);
 }
 
 void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
@@ -221,6 +222,7 @@ void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
 	}
 	toplevel->view.mapped = false;
 	wl_list_remove(&toplevel->view.link);
+	server_arrange_workspace(toplevel->view.server);
 }
 
 void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
