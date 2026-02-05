@@ -1,5 +1,63 @@
 #include "Server.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+
+float parse_output_scale() {
+	const char *value = getenv("KRISTAL_OUTPUT_SCALE");
+	if (value == nullptr || value[0] == '\0') {
+		return 1.0f;
+	}
+
+	char *end = nullptr;
+	errno = 0;
+	const float scale = strtof(value, &end);
+	if (errno != 0 || end == value || (end != nullptr && *end != '\0') || scale <= 0.0f) {
+		wlr_log(
+			WLR_ERROR,
+			"Ignoring invalid KRISTAL_OUTPUT_SCALE='%s'; expected positive number",
+			value);
+		return 1.0f;
+	}
+	return scale;
+}
+
+OutputLayoutMode parse_output_layout_mode() {
+	const char *value = getenv("KRISTAL_OUTPUT_LAYOUT");
+	if (value == nullptr || value[0] == '\0' || strcmp(value, "auto") == 0) {
+		return OUTPUT_LAYOUT_AUTO;
+	}
+	if (strcmp(value, "horizontal") == 0) {
+		return OUTPUT_LAYOUT_HORIZONTAL;
+	}
+	if (strcmp(value, "vertical") == 0) {
+		return OUTPUT_LAYOUT_VERTICAL;
+	}
+
+	wlr_log(
+		WLR_ERROR,
+		"Ignoring invalid KRISTAL_OUTPUT_LAYOUT='%s'; expected auto|horizontal|vertical",
+		value);
+	return OUTPUT_LAYOUT_AUTO;
+}
+
+const char *layout_mode_name(OutputLayoutMode mode) {
+	switch (mode) {
+	case OUTPUT_LAYOUT_HORIZONTAL:
+		return "horizontal";
+	case OUTPUT_LAYOUT_VERTICAL:
+		return "vertical";
+	case OUTPUT_LAYOUT_AUTO:
+	default:
+		return "auto";
+	}
+}
+
+} // namespace
+
 KristalCompositor::KristalCompositor() = default;
 
 void KristalCompositor::Create() {
@@ -30,6 +88,19 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	wlr_data_device_manager_create(components->display);
 
     CreateOutputLayer();
+	components->output_scale = parse_output_scale();
+	components->output_layout_mode = parse_output_layout_mode();
+	components->next_output_x = 0;
+	components->next_output_y = 0;
+	wlr_log(
+		WLR_INFO,
+		"Output config: scale=%.2f layout=%s",
+		components->output_scale,
+		layout_mode_name(components->output_layout_mode));
+	components->xdg_output_mgr =
+		wlr_xdg_output_manager_v1_create(components->display, components->output_layout);
+	components->fractional_scale_mgr =
+		wlr_fractional_scale_manager_v1_create(components->display, 1);
 
     wl_list_init(&components->outputs);
 
@@ -54,6 +125,15 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->new_xdg_popup.notify = server_new_xdg_popup;
 	wl_signal_add(&components->xdg_shell->events.new_popup,
 		&components->new_xdg_popup);
+#ifdef KRISTAL_HAVE_LAYER_SHELL
+	components->layer_shell = wlr_layer_shell_v1_create(components->display, 4);
+	components->new_layer_surface.notify = server_new_layer_surface;
+	wl_signal_add(&components->layer_shell->events.new_surface,
+		&components->new_layer_surface);
+	wl_list_init(&components->layer_surfaces);
+#else
+	components->layer_shell = nullptr;
+#endif
 
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
@@ -107,6 +187,11 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->request_set_selection.notify = seat_request_set_selection;
 	wl_signal_add(&components->seat->events.request_set_selection,
 			&components->request_set_selection);
+	components->primary_selection_mgr =
+		wlr_primary_selection_v1_device_manager_create(components->display);
+	components->screencopy_mgr = wlr_screencopy_manager_v1_create(components->display);
+	components->virtual_keyboard_mgr =
+		wlr_virtual_keyboard_manager_v1_create(components->display);
 
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(components->display);

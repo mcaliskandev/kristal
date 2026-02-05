@@ -48,6 +48,9 @@ void server_new_output(Listener *listener, void *data) {
 	if (mode != nullptr) {
 		wlr_output_state_set_mode(&state, mode);
 	}
+	if (server->output_scale > 0.0f) {
+		wlr_output_state_set_scale(&state, server->output_scale);
+	}
 
 	wlr_output_commit_state(wlr_output, &state);
 	wlr_output_state_finish(&state);
@@ -67,7 +70,25 @@ void server_new_output(Listener *listener, void *data) {
 
 	wl_list_insert(&server->outputs, &output->link);
 
-	auto *layout_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
+	OutputLayoutOutput *layout_output = nullptr;
+	switch (server->output_layout_mode) {
+	case OUTPUT_LAYOUT_HORIZONTAL: {
+		layout_output = wlr_output_layout_add(
+			server->output_layout, wlr_output, server->next_output_x, 0);
+		server->next_output_x += wlr_output->width;
+		break;
+	}
+	case OUTPUT_LAYOUT_VERTICAL: {
+		layout_output = wlr_output_layout_add(
+			server->output_layout, wlr_output, 0, server->next_output_y);
+		server->next_output_y += wlr_output->height;
+		break;
+	}
+	case OUTPUT_LAYOUT_AUTO:
+	default:
+		layout_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
+		break;
+	}
 	auto *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, layout_output, scene_output);
 }

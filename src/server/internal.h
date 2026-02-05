@@ -19,6 +19,7 @@ extern "C" {
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
 #ifdef __cplusplus
 #define static
 #endif
@@ -26,9 +27,13 @@ extern "C" {
 #ifdef __cplusplus
 #undef static
 #endif
+#include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
@@ -57,6 +62,7 @@ typedef struct wlr_pointer_motion_absolute_event PointerMotionAbsoluteEvent;
 typedef struct wlr_renderer Renderer;
 typedef struct wlr_scene Scene;
 typedef struct wlr_scene_buffer SceneBuffer;
+typedef struct wlr_scene_layer_surface_v1 SceneLayerSurface;
 typedef struct wlr_scene_node SceneNode;
 typedef struct wlr_scene_output SceneOutput;
 typedef struct wlr_scene_output_layout SceneOutputLayout;
@@ -67,11 +73,21 @@ typedef struct wlr_seat_client SeatClient;
 typedef struct wlr_seat_pointer_request_set_cursor_event SeatPointerRequestSetCursorEvent;
 typedef struct wlr_seat_request_set_selection_event SeatRequestSetSelectionEvent;
 typedef struct wlr_xcursor_manager XcursorManager;
+typedef struct wlr_xdg_output_manager_v1 XdgOutputManager;
 typedef struct wlr_xdg_popup XdgPopup;
 typedef struct wlr_xdg_shell XdgShell;
 typedef struct wlr_xdg_surface XdgSurface;
 typedef struct wlr_xdg_toplevel XdgToplevel;
 typedef struct wlr_xdg_toplevel_resize_event XdgToplevelResizeEvent;
+typedef struct wlr_fractional_scale_manager_v1 FractionalScaleManager;
+typedef struct wlr_primary_selection_v1_device_manager PrimarySelectionManager;
+typedef struct wlr_screencopy_manager_v1 ScreencopyManager;
+typedef struct wlr_virtual_keyboard_manager_v1 VirtualKeyboardManager;
+
+struct wlr_layer_shell_v1;
+struct wlr_layer_surface_v1;
+typedef struct wlr_layer_shell_v1 LayerShell;
+typedef struct wlr_layer_surface_v1 LayerSurface;
 
 enum CursorMode {
 	CURSOR_PASSTHROUGH,
@@ -79,11 +95,18 @@ enum CursorMode {
 	CURSOR_RESIZE,
 };
 
+enum OutputLayoutMode {
+	OUTPUT_LAYOUT_AUTO,
+	OUTPUT_LAYOUT_HORIZONTAL,
+	OUTPUT_LAYOUT_VERTICAL,
+};
+
 typedef struct KristalServer KristalServer;
 typedef struct KristalOutput KristalOutput;
 typedef struct KristalToplevel KristalToplevel;
 typedef struct KristalPopup KristalPopup;
 typedef struct KristalKeyboard KristalKeyboard;
+typedef struct KristalLayerSurface KristalLayerSurface;
 
 struct KristalServer {
 	Display *display;
@@ -96,7 +119,10 @@ struct KristalServer {
 	XdgShell *xdg_shell;
 	Listener new_xdg_toplevel;
 	Listener new_xdg_popup;
+	LayerShell *layer_shell;
+	Listener new_layer_surface;
 	List toplevels;
+	List layer_surfaces;
 
 	Cursor *cursor;
 	XcursorManager *cursor_mgr;
@@ -121,6 +147,15 @@ struct KristalServer {
 	OutputLayout *output_layout;
 	List outputs;
 	Listener new_output;
+	float output_scale;
+	enum OutputLayoutMode output_layout_mode;
+	int next_output_x;
+	int next_output_y;
+	XdgOutputManager *xdg_output_mgr;
+	FractionalScaleManager *fractional_scale_mgr;
+	PrimarySelectionManager *primary_selection_mgr;
+	ScreencopyManager *screencopy_mgr;
+	VirtualKeyboardManager *virtual_keyboard_mgr;
 };
 
 struct KristalOutput {
@@ -164,6 +199,17 @@ struct KristalKeyboard {
 	Listener destroy;
 };
 
+struct KristalLayerSurface {
+	List link;
+	KristalServer *server;
+	LayerSurface *layer_surface;
+	SceneLayerSurface *scene_layer_surface;
+	Listener map;
+	Listener unmap;
+	Listener commit;
+	Listener destroy;
+};
+
 void focus_toplevel(KristalToplevel *toplevel, Surface *surface);
 void reset_cursor_mode(KristalServer *server);
 
@@ -180,6 +226,7 @@ void seat_request_set_selection(Listener *listener, void *data);
 
 void server_new_xdg_toplevel(Listener *listener, void *data);
 void server_new_xdg_popup(Listener *listener, void *data);
+void server_new_layer_surface(Listener *listener, void *data);
 
 #ifdef __cplusplus
 }
