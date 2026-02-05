@@ -41,11 +41,15 @@ KRISTAL_OUTPUT_SCALE=1.5 KRISTAL_OUTPUT_LAYOUT=vertical ./build/kristal
 
 ## TODO
 
-- [x] HiDPI support
-- [x] Any kind of configuration, e.g. output layout
-- [x] Any protocol other than xdg-shell (e.g. layer-shell, for
-  panels/taskbars/etc; or Xwayland, for proxied X11 windows)
-- [x] Optional protocols, e.g. screen capture, primary selection, virtual keyboard, etc.
+- [x] Xwayland support for X11 apps (`wlr_xwayland` wired up)
+- [x] Output management protocol (runtime monitor enable/disable, modes, scale, position)
+- [x] Input device coverage beyond keyboard/mouse: touch, tablet, gestures, switch
+- [x] Keybinding system for common WM actions (launchers, move/resize, close, etc.)
+- [x] Window layout/workspaces (workspaces + view cycling)
+- [x] Client/server decorations policy (xdg-decoration) or custom titlebars
+- [x] Activation protocol (xdg-activation) and focus-stealing rules
+- [x] Pointer constraints + relative pointer (lock/confine pointer for games)
+- [x] Idle + idle-inhibit handling (screensaver/lock integration)
 
 Note: layer-shell support is built only when the wlroots protocol headers are
 available (the `wlr-layer-shell-unstable-v1-protocol.h` header from
