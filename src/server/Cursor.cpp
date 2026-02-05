@@ -1,3 +1,5 @@
+#include <linux/input-event-codes.h>
+
 #include "internal.h"
 
 namespace {
@@ -62,6 +64,113 @@ void process_cursor_move(KristalServer *server) {
 			new_x,
 			new_y);
 	}
+#endif
+}
+
+uint32_t resize_edges_for_view(KristalServer *server, KristalView *view) {
+	if (server == nullptr || view == nullptr) {
+		return 0;
+	}
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		Box geometry{};
+		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+		const double view_x = toplevel->view.scene_tree->node.x + geometry.x;
+		const double view_y = toplevel->view.scene_tree->node.y + geometry.y;
+		const double center_x = view_x + geometry.width / 2.0;
+		const double center_y = view_y + geometry.height / 2.0;
+		uint32_t edges = 0;
+		edges |= (server->cursor->x < center_x) ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT;
+		edges |= (server->cursor->y < center_y) ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM;
+		return edges;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface == nullptr) {
+		return 0;
+	}
+	const double center_x = xsurface->xwayland_surface->x +
+		xsurface->xwayland_surface->width / 2.0;
+	const double center_y = xsurface->xwayland_surface->y +
+		xsurface->xwayland_surface->height / 2.0;
+	uint32_t edges = 0;
+	edges |= (server->cursor->x < center_x) ? WLR_EDGE_LEFT : WLR_EDGE_RIGHT;
+	edges |= (server->cursor->y < center_y) ? WLR_EDGE_TOP : WLR_EDGE_BOTTOM;
+	return edges;
+#else
+	return 0;
+#endif
+}
+
+bool begin_interactive_view(KristalServer *server, KristalView *view, CursorMode mode) {
+	if (server == nullptr || view == nullptr || !view->mapped) {
+		return false;
+	}
+
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		server->grabbed_toplevel = toplevel;
+		server->grabbed_xwayland = nullptr;
+		server->cursor_mode = mode;
+
+		if (mode == CURSOR_MOVE) {
+			server->grab_x = server->cursor->x - toplevel->view.scene_tree->node.x;
+			server->grab_y = server->cursor->y - toplevel->view.scene_tree->node.y;
+			return true;
+		}
+
+		Box geometry{};
+		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+		const uint32_t edges = resize_edges_for_view(server, view);
+		const double border_x =
+			(toplevel->view.scene_tree->node.x + geometry.x) +
+			((edges & WLR_EDGE_RIGHT) ? geometry.width : 0);
+		const double border_y =
+			(toplevel->view.scene_tree->node.y + geometry.y) +
+			((edges & WLR_EDGE_BOTTOM) ? geometry.height : 0);
+		server->grab_x = server->cursor->x - border_x;
+		server->grab_y = server->cursor->y - border_y;
+		server->grab_geobox = geometry;
+		server->grab_geobox.x += toplevel->view.scene_tree->node.x;
+		server->grab_geobox.y += toplevel->view.scene_tree->node.y;
+		server->resize_edges = edges;
+		return true;
+	}
+
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface == nullptr || xsurface->view.scene_tree == nullptr) {
+		return false;
+	}
+
+	server->grabbed_xwayland = xsurface;
+	server->grabbed_toplevel = nullptr;
+	server->cursor_mode = mode;
+
+	if (mode == CURSOR_MOVE) {
+		server->grab_x = server->cursor->x - xsurface->view.scene_tree->node.x;
+		server->grab_y = server->cursor->y - xsurface->view.scene_tree->node.y;
+		return true;
+	}
+
+	server->grab_geobox.x = xsurface->xwayland_surface->x;
+	server->grab_geobox.y = xsurface->xwayland_surface->y;
+	server->grab_geobox.width = xsurface->xwayland_surface->width;
+	server->grab_geobox.height = xsurface->xwayland_surface->height;
+
+	const uint32_t edges = resize_edges_for_view(server, view);
+	const double border_x =
+		xsurface->view.scene_tree->node.x +
+		((edges & WLR_EDGE_RIGHT) ? xsurface->xwayland_surface->width : 0);
+	const double border_y =
+		xsurface->view.scene_tree->node.y +
+		((edges & WLR_EDGE_BOTTOM) ? xsurface->xwayland_surface->height : 0);
+	server->grab_x = server->cursor->x - border_x;
+	server->grab_y = server->cursor->y - border_y;
+	server->resize_edges = edges;
+	return true;
+#else
+	return false;
 #endif
 }
 
@@ -361,19 +470,10 @@ void server_cursor_button(Listener *listener, void *data) {
 	KristalServer *server = wl_container_of(listener, server, cursor_button);
 	auto *event = static_cast<PointerButtonEvent *>(data);
 
-	wlr_seat_pointer_notify_button(
-		server->seat,
-		event->time_msec,
-		event->button,
-		event->state);
-	if (server->idle_notifier != nullptr) {
-		wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
-	}
-
 	double surface_x = 0.0;
 	double surface_y = 0.0;
 	Surface *surface = nullptr;
-	desktop_view_at(
+	KristalView *view = desktop_view_at(
 		server,
 		server->cursor->x,
 		server->cursor->y,
@@ -384,6 +484,33 @@ void server_cursor_button(Listener *listener, void *data) {
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		reset_cursor_mode(server);
 		return;
+	}
+
+	auto *keyboard = wlr_seat_get_keyboard(server->seat);
+	const uint32_t modifiers = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
+	const bool alt = (modifiers & WLR_MODIFIER_ALT) != 0;
+	if (alt && view != nullptr) {
+		const bool is_move = event->button == BTN_LEFT;
+		const bool is_resize = event->button == BTN_RIGHT;
+		if (is_move || is_resize) {
+			focus_surface(server, surface);
+			const bool started = begin_interactive_view(
+				server,
+				view,
+				is_move ? CURSOR_MOVE : CURSOR_RESIZE);
+			if (started) {
+				return;
+			}
+		}
+	}
+
+	wlr_seat_pointer_notify_button(
+		server->seat,
+		event->time_msec,
+		event->button,
+		event->state);
+	if (server->idle_notifier != nullptr) {
+		wlr_idle_notifier_v1_notify_activity(server->idle_notifier, server->seat);
 	}
 
 	focus_surface(server, surface);
