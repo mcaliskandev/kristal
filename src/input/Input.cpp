@@ -3,6 +3,9 @@
 #include <cstring>
 #include <cerrno>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
 #include <strings.h>
 #include <unistd.h>
 
@@ -269,57 +272,229 @@ void keyboard_handle_modifiers(Listener *listener, void * /*data*/) {
 		&keyboard->wlr_keyboard->modifiers);
 }
 
-bool handle_keybinding(KristalServer *server, xkb_keysym_t sym, uint32_t modifiers) {
-	const bool alt = (modifiers & WLR_MODIFIER_ALT) != 0;
-	const bool shift = (modifiers & WLR_MODIFIER_SHIFT) != 0;
-	if (!alt) {
+enum class KeyActionType {
+	QUIT,
+	TERMINAL,
+	LAUNCHER,
+	CLOSE,
+	FOCUS_NEXT,
+	WORKSPACE,
+	MOVE_WORKSPACE,
+};
+
+struct KeyBinding {
+	KeyActionType action;
+	uint32_t modifiers;
+	xkb_keysym_t sym;
+	int workspace;
+};
+
+uint32_t parse_modifier_token(const std::string &token) {
+	if (token == "alt" || token == "mod1") {
+		return WLR_MODIFIER_ALT;
+	}
+	if (token == "shift") {
+		return WLR_MODIFIER_SHIFT;
+	}
+	if (token == "ctrl" || token == "control") {
+		return WLR_MODIFIER_CTRL;
+	}
+	if (token == "super" || token == "logo" || token == "mod4") {
+		return WLR_MODIFIER_LOGO;
+	}
+	return 0;
+}
+
+std::string to_lower_ascii(const std::string &value) {
+	std::string out = value;
+	for (char &ch : out) {
+		if (ch >= 'A' && ch <= 'Z') {
+			ch = static_cast<char>(ch - 'A' + 'a');
+		}
+	}
+	return out;
+}
+
+bool parse_binding_action(const std::string &action_text, KeyActionType *out_action, int *out_ws) {
+	const std::string action = to_lower_ascii(action_text);
+	if (action == "quit") {
+		*out_action = KeyActionType::QUIT;
+		return true;
+	}
+	if (action == "terminal") {
+		*out_action = KeyActionType::TERMINAL;
+		return true;
+	}
+	if (action == "launcher") {
+		*out_action = KeyActionType::LAUNCHER;
+		return true;
+	}
+	if (action == "close") {
+		*out_action = KeyActionType::CLOSE;
+		return true;
+	}
+	if (action == "focus-next") {
+		*out_action = KeyActionType::FOCUS_NEXT;
+		return true;
+	}
+	if (action.rfind("ws", 0) == 0 && action.size() == 3) {
+		const int ws = action[2] - '0';
+		if (ws >= 1 && ws <= 9) {
+			*out_action = KeyActionType::WORKSPACE;
+			*out_ws = ws;
+			return true;
+		}
+	}
+	if (action.rfind("move-ws", 0) == 0 && action.size() == 8) {
+		const int ws = action[7] - '0';
+		if (ws >= 1 && ws <= 9) {
+			*out_action = KeyActionType::MOVE_WORKSPACE;
+			*out_ws = ws;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool parse_keybinding(const std::string &entry, KeyBinding *out) {
+	const auto eq = entry.find('=');
+	if (eq == std::string::npos) {
+		return false;
+	}
+	const std::string left = entry.substr(0, eq);
+	const std::string right = entry.substr(eq + 1);
+	KeyActionType action{};
+	int workspace = 0;
+	if (!parse_binding_action(right, &action, &workspace)) {
 		return false;
 	}
 
-	switch (sym) {
-	case XKB_KEY_Escape:
-		wl_display_terminate(server->display);
-		break;
-	case XKB_KEY_Return:
-		spawn_command(getenv("KRISTAL_TERMINAL"));
-		break;
-	case XKB_KEY_d:
-	case XKB_KEY_D:
-		spawn_command(getenv("KRISTAL_LAUNCHER"));
-		break;
-	case XKB_KEY_q:
-	case XKB_KEY_Q:
-		server_close_focused(server);
-		break;
-	case XKB_KEY_F1: {
-		auto *next_view = next_view_in_workspace(server);
-		if (next_view != nullptr) {
-			focus_surface(server, view_surface(next_view));
+	uint32_t mods = 0;
+	std::string key_token;
+	std::stringstream ss(left);
+	std::string token;
+	while (std::getline(ss, token, '+')) {
+		const std::string trimmed = to_lower_ascii(token);
+		const uint32_t mod = parse_modifier_token(trimmed);
+		if (mod != 0) {
+			mods |= mod;
+		} else if (!trimmed.empty()) {
+			key_token = trimmed;
 		}
-		break;
 	}
-	case XKB_KEY_1:
-	case XKB_KEY_2:
-	case XKB_KEY_3:
-	case XKB_KEY_4:
-	case XKB_KEY_5:
-	case XKB_KEY_6:
-	case XKB_KEY_7:
-	case XKB_KEY_8:
-	case XKB_KEY_9: {
-		const int workspace = static_cast<int>(sym - XKB_KEY_0);
-		if (shift) {
-			server_move_focused_to_workspace(server, workspace);
-		} else {
-			server_apply_workspace(server, workspace);
-		}
-		break;
-	}
-	default:
+	if (key_token.empty()) {
 		return false;
 	}
 
+	xkb_keysym_t sym = xkb_keysym_from_name(
+		key_token.c_str(),
+		XKB_KEYSYM_CASE_INSENSITIVE);
+	if (sym == XKB_KEY_NoSymbol) {
+		return false;
+	}
+
+	out->action = action;
+	out->modifiers = mods;
+	out->sym = sym;
+	out->workspace = workspace;
 	return true;
+}
+
+const std::vector<KeyBinding> &get_keybindings() {
+	static bool initialized = false;
+	static std::vector<KeyBinding> bindings;
+	if (initialized) {
+		return bindings;
+	}
+	initialized = true;
+
+	const char *env = getenv("KRISTAL_BINDINGS");
+	if (env != nullptr && env[0] != '\0') {
+		std::stringstream ss(env);
+		std::string entry;
+		while (std::getline(ss, entry, ';')) {
+			KeyBinding binding{};
+			if (parse_keybinding(entry, &binding)) {
+				bindings.push_back(binding);
+			}
+		}
+	}
+
+	if (bindings.empty()) {
+		const char *defaults[] = {
+			"Alt+Escape=quit",
+			"Alt+Return=terminal",
+			"Alt+D=launcher",
+			"Alt+Q=close",
+			"Alt+F1=focus-next",
+			"Alt+1=ws1",
+			"Alt+2=ws2",
+			"Alt+3=ws3",
+			"Alt+4=ws4",
+			"Alt+5=ws5",
+			"Alt+6=ws6",
+			"Alt+7=ws7",
+			"Alt+8=ws8",
+			"Alt+9=ws9",
+			"Alt+Shift+1=move-ws1",
+			"Alt+Shift+2=move-ws2",
+			"Alt+Shift+3=move-ws3",
+			"Alt+Shift+4=move-ws4",
+			"Alt+Shift+5=move-ws5",
+			"Alt+Shift+6=move-ws6",
+			"Alt+Shift+7=move-ws7",
+			"Alt+Shift+8=move-ws8",
+			"Alt+Shift+9=move-ws9",
+		};
+		for (const char *entry : defaults) {
+			KeyBinding binding{};
+			if (parse_keybinding(entry, &binding)) {
+				bindings.push_back(binding);
+			}
+		}
+	}
+
+	return bindings;
+}
+
+bool handle_keybinding(KristalServer *server, xkb_keysym_t sym, uint32_t modifiers) {
+	const uint32_t relevant_mods =
+		modifiers & (WLR_MODIFIER_ALT | WLR_MODIFIER_CTRL | WLR_MODIFIER_SHIFT | WLR_MODIFIER_LOGO);
+	const auto &bindings = get_keybindings();
+	for (const auto &binding : bindings) {
+		if (binding.sym != sym || binding.modifiers != relevant_mods) {
+			continue;
+		}
+		switch (binding.action) {
+		case KeyActionType::QUIT:
+			wl_display_terminate(server->display);
+			break;
+		case KeyActionType::TERMINAL:
+			spawn_command(getenv("KRISTAL_TERMINAL"));
+			break;
+		case KeyActionType::LAUNCHER:
+			spawn_command(getenv("KRISTAL_LAUNCHER"));
+			break;
+		case KeyActionType::CLOSE:
+			server_close_focused(server);
+			break;
+		case KeyActionType::FOCUS_NEXT: {
+			auto *next_view = next_view_in_workspace(server);
+			if (next_view != nullptr) {
+				focus_surface(server, view_surface(next_view));
+			}
+			break;
+		}
+		case KeyActionType::WORKSPACE:
+			server_apply_workspace(server, binding.workspace);
+			break;
+		case KeyActionType::MOVE_WORKSPACE:
+			server_move_focused_to_workspace(server, binding.workspace);
+			break;
+		}
+		return true;
+	}
+	return false;
 }
 
 void keyboard_handle_key(Listener *listener, void *data) {
