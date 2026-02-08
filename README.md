@@ -63,12 +63,3 @@ Send `SIGHUP` to reload at runtime.
 Keybinding actions include `layout-floating`, `layout-stack`, `layout-grid`, `layout-monocle`, and `layout-cycle`.
 
 *Note:* layer-shell support is built only when the wlroots protocol headers are available (the `wlr-layer-shell-unstable-v1-protocol.h` header from `wlr-protocols`). If missing, the compositor still builds but layer-shell is disabled.
-
-## TODO
-
-- [x] Add a real config file with reloadable settings (instead of only env vars).
-- [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
-- [x] Expand window management: keyboard move/resize, better focus cycling, window rules.
-- [x] Add more layout options (beyond floating/stack) and per-workspace layout state.
-- [x] Add server-side decorations and theming controls.
-- [x] Add output power management (DPMS) and gamma/brightness controls.
