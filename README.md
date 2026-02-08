@@ -35,7 +35,7 @@ Use environment variables before launching:
 - `KRISTAL_OUTPUTS_STATE`: path to persist per-output scale/transform/position
 - `KRISTAL_OUTPUT_TRANSFORM`: `normal` (default), `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270`
 - `KRISTAL_WINDOW_PLACEMENT`: `auto` (default), `center`, or `cascade`
-- `KRISTAL_WINDOW_LAYOUT`: `floating` (default) or `stack`
+- `KRISTAL_WINDOW_LAYOUT`: `floating` (default), `stack`, `grid`, or `monocle`
 - `KRISTAL_WINDOW_RULES`: semicolon-separated rules (e.g. `app_id=firefox,workspace=2,floating=1;title=Editor,workspace=3`)
 - `KRISTAL_XKB_RULES`: XKB rules (optional)
 - `KRISTAL_XKB_MODEL`: XKB model (optional)
@@ -57,6 +57,7 @@ KRISTAL_OUTPUT_SCALE=1.5 KRISTAL_OUTPUT_LAYOUT=vertical ./build/kristal
 
 Config files accept the same `KRISTAL_*` keys, one per line as `KEY=VALUE` (lines starting with `#` or `;` are ignored).
 Send `SIGHUP` to reload at runtime.
+Keybinding actions include `layout-floating`, `layout-stack`, `layout-grid`, `layout-monocle`, and `layout-cycle`.
 
 *Note:* layer-shell support is built only when the wlroots protocol headers are available (the `wlr-layer-shell-unstable-v1-protocol.h` header from `wlr-protocols`). If missing, the compositor still builds but layer-shell is disabled.
 
@@ -65,6 +66,6 @@ Send `SIGHUP` to reload at runtime.
 - [x] Add a real config file with reloadable settings (instead of only env vars).
 - [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
 - [x] Expand window management: keyboard move/resize, better focus cycling, window rules.
-- [ ] Add more layout options (beyond floating/stack) and per-workspace layout state.
+- [x] Add more layout options (beyond floating/stack) and per-workspace layout state.
 - [ ] Add server-side decorations and theming controls.
 - [x] Add output power management (DPMS) and gamma/brightness controls.

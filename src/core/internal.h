@@ -180,6 +180,8 @@ enum WindowPlacementMode {
 enum WindowLayoutMode {
 	WINDOW_LAYOUT_FLOATING,
 	WINDOW_LAYOUT_STACK,
+	WINDOW_LAYOUT_GRID,
+	WINDOW_LAYOUT_MONOCLE,
 };
 
 typedef struct KristalServer KristalServer;
@@ -267,6 +269,7 @@ struct KristalServer {
 	int next_window_x;
 	int next_window_y;
 	enum WindowLayoutMode window_layout_mode;
+	enum WindowLayoutMode workspace_layouts[10];
 	XdgOutputManager *xdg_output_mgr;
 	FractionalScaleManager *fractional_scale_mgr;
 	PrimarySelectionManager *primary_selection_mgr;
@@ -446,6 +449,8 @@ void server_resize_focused_by(
 	int dh,
 	bool from_left,
 	bool from_top);
+void server_set_workspace_layout(KristalServer *server, WindowLayoutMode mode);
+void server_cycle_workspace_layout(KristalServer *server);
 void server_update_output_manager_config(KristalServer *server);
 void server_arrange_workspace(KristalServer *server);
 void server_text_input_focus(KristalServer *server, Surface *surface);

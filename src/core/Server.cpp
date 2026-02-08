@@ -157,10 +157,16 @@ WindowLayoutMode parse_window_layout_mode() {
 	if (strcmp(value, "stack") == 0) {
 		return WINDOW_LAYOUT_STACK;
 	}
+	if (strcmp(value, "grid") == 0) {
+		return WINDOW_LAYOUT_GRID;
+	}
+	if (strcmp(value, "monocle") == 0 || strcmp(value, "fullscreen") == 0) {
+		return WINDOW_LAYOUT_MONOCLE;
+	}
 
 	wlr_log(
 		WLR_ERROR,
-		"Ignoring invalid KRISTAL_WINDOW_LAYOUT='%s'; expected floating|stack",
+		"Ignoring invalid KRISTAL_WINDOW_LAYOUT='%s'; expected floating|stack|grid|monocle",
 		value);
 	return WINDOW_LAYOUT_FLOATING;
 }
@@ -169,6 +175,10 @@ const char *window_layout_name(WindowLayoutMode mode) {
 	switch (mode) {
 	case WINDOW_LAYOUT_STACK:
 		return "stack";
+	case WINDOW_LAYOUT_GRID:
+		return "grid";
+	case WINDOW_LAYOUT_MONOCLE:
+		return "monocle";
 	case WINDOW_LAYOUT_FLOATING:
 	default:
 		return "floating";
@@ -258,6 +268,9 @@ void reload_runtime_settings(KristalServer *server) {
 	server->output_config_path = getenv("KRISTAL_OUTPUTS_STATE");
 	server->window_placement_mode = parse_window_placement_mode();
 	server->window_layout_mode = parse_window_layout_mode();
+	for (int i = 0; i <= server->workspace_count; ++i) {
+		server->workspace_layouts[i] = server->window_layout_mode;
+	}
 	server_reload_keybindings();
 	server_reload_input_settings(server);
 	server_arrange_workspace(server);
@@ -554,6 +567,9 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->touch_device_count = 0;
 	components->current_workspace = 1;
 	components->workspace_count = 9;
+	for (int i = 0; i <= components->workspace_count; ++i) {
+		components->workspace_layouts[i] = components->window_layout_mode;
+	}
 #ifdef KRISTAL_HAVE_XWAYLAND
 	components->xwayland = wlr_xwayland_create(
 		components->display, components->compositor, true);

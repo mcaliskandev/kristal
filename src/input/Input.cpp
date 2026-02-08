@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
+#include <cmath>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -441,6 +443,11 @@ enum class KeyActionType {
 	RESIZE_RIGHT,
 	RESIZE_UP,
 	RESIZE_DOWN,
+	LAYOUT_FLOATING,
+	LAYOUT_STACK,
+	LAYOUT_GRID,
+	LAYOUT_MONOCLE,
+	LAYOUT_CYCLE,
 	WORKSPACE,
 	MOVE_WORKSPACE,
 };
@@ -534,6 +541,26 @@ bool parse_binding_action(const std::string &action_text, KeyActionType *out_act
 	}
 	if (action == "resize-down") {
 		*out_action = KeyActionType::RESIZE_DOWN;
+		return true;
+	}
+	if (action == "layout-floating") {
+		*out_action = KeyActionType::LAYOUT_FLOATING;
+		return true;
+	}
+	if (action == "layout-stack") {
+		*out_action = KeyActionType::LAYOUT_STACK;
+		return true;
+	}
+	if (action == "layout-grid") {
+		*out_action = KeyActionType::LAYOUT_GRID;
+		return true;
+	}
+	if (action == "layout-monocle") {
+		*out_action = KeyActionType::LAYOUT_MONOCLE;
+		return true;
+	}
+	if (action == "layout-cycle") {
+		*out_action = KeyActionType::LAYOUT_CYCLE;
 		return true;
 	}
 	if (action.rfind("ws", 0) == 0 && action.size() == 3) {
@@ -633,6 +660,7 @@ void load_keybindings_from_env() {
 			"Alt+Ctrl+Right=resize-right",
 			"Alt+Ctrl+Up=resize-up",
 			"Alt+Ctrl+Down=resize-down",
+			"Alt+Space=layout-cycle",
 			"Alt+1=ws1",
 			"Alt+2=ws2",
 			"Alt+3=ws3",
@@ -727,6 +755,21 @@ bool handle_keybinding(KristalServer *server, xkb_keysym_t sym, uint32_t modifie
 			break;
 		case KeyActionType::RESIZE_DOWN:
 			server_resize_focused_by(server, 0, 32, false, false);
+			break;
+		case KeyActionType::LAYOUT_FLOATING:
+			server_set_workspace_layout(server, WINDOW_LAYOUT_FLOATING);
+			break;
+		case KeyActionType::LAYOUT_STACK:
+			server_set_workspace_layout(server, WINDOW_LAYOUT_STACK);
+			break;
+		case KeyActionType::LAYOUT_GRID:
+			server_set_workspace_layout(server, WINDOW_LAYOUT_GRID);
+			break;
+		case KeyActionType::LAYOUT_MONOCLE:
+			server_set_workspace_layout(server, WINDOW_LAYOUT_MONOCLE);
+			break;
+		case KeyActionType::LAYOUT_CYCLE:
+			server_cycle_workspace_layout(server);
 			break;
 		case KeyActionType::WORKSPACE:
 			server_apply_workspace(server, binding.workspace);
@@ -962,6 +1005,7 @@ void server_apply_workspace(KristalServer *server, int workspace) {
 	}
 
 	server->current_workspace = workspace;
+	server->window_layout_mode = server->workspace_layouts[workspace];
 	KristalView *view = nullptr;
 	wl_list_for_each(view, &server->views, link) {
 		const bool visible = view->mapped && view->workspace == workspace;
@@ -1060,8 +1104,42 @@ void server_resize_focused_by(KristalServer *server, int dw, int dh, bool from_l
 	view_apply_box(view, box);
 }
 
+void server_set_workspace_layout(KristalServer *server, WindowLayoutMode mode) {
+	if (server == nullptr) {
+		return;
+	}
+	server->window_layout_mode = mode;
+	if (server->current_workspace >= 1 && server->current_workspace <= server->workspace_count) {
+		server->workspace_layouts[server->current_workspace] = mode;
+	}
+	server_arrange_workspace(server);
+}
+
+void server_cycle_workspace_layout(KristalServer *server) {
+	if (server == nullptr) {
+		return;
+	}
+	WindowLayoutMode next = WINDOW_LAYOUT_FLOATING;
+	switch (server->window_layout_mode) {
+	case WINDOW_LAYOUT_FLOATING:
+		next = WINDOW_LAYOUT_STACK;
+		break;
+	case WINDOW_LAYOUT_STACK:
+		next = WINDOW_LAYOUT_GRID;
+		break;
+	case WINDOW_LAYOUT_GRID:
+		next = WINDOW_LAYOUT_MONOCLE;
+		break;
+	case WINDOW_LAYOUT_MONOCLE:
+	default:
+		next = WINDOW_LAYOUT_FLOATING;
+		break;
+	}
+	server_set_workspace_layout(server, next);
+}
+
 void server_arrange_workspace(KristalServer *server) {
-	if (server == nullptr || server->window_layout_mode != WINDOW_LAYOUT_STACK) {
+	if (server == nullptr || server->window_layout_mode == WINDOW_LAYOUT_FLOATING) {
 		return;
 	}
 
@@ -1090,15 +1168,60 @@ void server_arrange_workspace(KristalServer *server) {
 		return;
 	}
 
-	int index = 0;
-	wl_list_for_each(view, &server->views, link) {
-		if (view->workspace != server->current_workspace) {
-			continue;
+	switch (server->window_layout_mode) {
+	case WINDOW_LAYOUT_STACK: {
+		int index = 0;
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace != server->current_workspace) {
+				continue;
+			}
+			if (!view_is_tiled_candidate(view)) {
+				continue;
+			}
+			apply_tiled_geometry(view, output_box, index, count);
+			index++;
 		}
-		if (!view_is_tiled_candidate(view)) {
-			continue;
+		break;
+	}
+	case WINDOW_LAYOUT_GRID: {
+		const int cols = std::max(1, static_cast<int>(std::ceil(std::sqrt(count))));
+		const int rows = std::max(1, (count + cols - 1) / cols);
+		const int base_width = output_box.width / cols;
+		const int extra_width = output_box.width - base_width * cols;
+		const int base_height = output_box.height / rows;
+		const int extra_height = output_box.height - base_height * rows;
+		int index = 0;
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace != server->current_workspace) {
+				continue;
+			}
+			if (!view_is_tiled_candidate(view)) {
+				continue;
+			}
+			const int col = index % cols;
+			const int row = index / cols;
+			const int width = base_width + (col == cols - 1 ? extra_width : 0);
+			const int height = base_height + (row == rows - 1 ? extra_height : 0);
+			const int x = output_box.x + col * base_width;
+			const int y = output_box.y + row * base_height;
+			Box cell_box{ x, y, width, height };
+			view_apply_box(view, cell_box);
+			index++;
 		}
-		apply_tiled_geometry(view, output_box, index, count);
-		index++;
+		break;
+	}
+	case WINDOW_LAYOUT_MONOCLE:
+		wl_list_for_each(view, &server->views, link) {
+			if (view->workspace != server->current_workspace) {
+				continue;
+			}
+			if (!view_is_tiled_candidate(view)) {
+				continue;
+			}
+			view_apply_box(view, output_box);
+		}
+		break;
+	default:
+		break;
 	}
 }
