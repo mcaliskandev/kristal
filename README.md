@@ -53,3 +53,12 @@ KRISTAL_OUTPUT_SCALE=1.5 KRISTAL_OUTPUT_LAYOUT=vertical ./build/kristal
 ```
 
 *Note:* layer-shell support is built only when the wlroots protocol headers are available (the `wlr-layer-shell-unstable-v1-protocol.h` header from `wlr-protocols`). If missing, the compositor still builds but layer-shell is disabled.
+
+## TODO
+
+- [ ] Add a real config file with reloadable settings (instead of only env vars).
+- [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
+- [ ] Expand window management: keyboard move/resize, better focus cycling, window rules.
+- [ ] Add more layout options (beyond floating/stack) and per-workspace layout state.
+- [ ] Add server-side decorations and theming controls.
+- [x] Add output power management (DPMS) and gamma/brightness controls.
