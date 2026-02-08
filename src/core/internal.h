@@ -335,6 +335,7 @@ struct KristalView {
 	enum KristalViewType type;
 	int workspace;
 	bool mapped;
+	bool force_floating;
 	ForeignToplevelHandle *foreign_toplevel;
 };
 
@@ -438,12 +439,20 @@ void focus_surface(KristalServer *server, Surface *surface);
 void server_apply_workspace(KristalServer *server, int workspace);
 void server_move_focused_to_workspace(KristalServer *server, int workspace);
 void server_close_focused(KristalServer *server);
+void server_move_focused_by(KristalServer *server, int dx, int dy);
+void server_resize_focused_by(
+	KristalServer *server,
+	int dw,
+	int dh,
+	bool from_left,
+	bool from_top);
 void server_update_output_manager_config(KristalServer *server);
 void server_arrange_workspace(KristalServer *server);
 void server_text_input_focus(KristalServer *server, Surface *surface);
 void server_register_foreign_toplevel(KristalView *view, const char *title, const char *app_id);
 void server_update_foreign_toplevel(KristalView *view, const char *title, const char *app_id);
 void server_unregister_foreign_toplevel(KristalView *view);
+void server_apply_window_rules(KristalView *view, const char *title, const char *app_id);
 
 void server_new_output(Listener *listener, void *data);
 void server_cursor_motion(Listener *listener, void *data);

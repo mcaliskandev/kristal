@@ -208,6 +208,10 @@ void apply_fullscreen_state(KristalToplevel *toplevel, bool fullscreen) {
 void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, map);
 	toplevel->view.mapped = true;
+	server_apply_window_rules(
+		&toplevel->view,
+		toplevel->xdg_toplevel->title,
+		toplevel->xdg_toplevel->app_id);
 	wl_list_insert(&toplevel->view.server->views, &toplevel->view.link);
 	wlr_scene_node_set_enabled(
 		&toplevel->view.scene_tree->node,
@@ -371,6 +375,7 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 	toplevel->view.type = KRISTAL_VIEW_XDG;
 	toplevel->view.workspace = server->current_workspace;
 	toplevel->view.mapped = false;
+	toplevel->view.force_floating = false;
 	toplevel->view.foreign_toplevel = nullptr;
 	toplevel->xdg_toplevel = xdg_toplevel;
 	toplevel->view.scene_tree =

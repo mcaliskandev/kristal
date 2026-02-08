@@ -36,6 +36,7 @@ Use environment variables before launching:
 - `KRISTAL_OUTPUT_TRANSFORM`: `normal` (default), `90`, `180`, `270`, `flipped`, `flipped-90`, `flipped-180`, `flipped-270`
 - `KRISTAL_WINDOW_PLACEMENT`: `auto` (default), `center`, or `cascade`
 - `KRISTAL_WINDOW_LAYOUT`: `floating` (default) or `stack`
+- `KRISTAL_WINDOW_RULES`: semicolon-separated rules (e.g. `app_id=firefox,workspace=2,floating=1;title=Editor,workspace=3`)
 - `KRISTAL_XKB_RULES`: XKB rules (optional)
 - `KRISTAL_XKB_MODEL`: XKB model (optional)
 - `KRISTAL_XKB_LAYOUT`: XKB layout (optional)
@@ -63,7 +64,7 @@ Send `SIGHUP` to reload at runtime.
 
 - [x] Add a real config file with reloadable settings (instead of only env vars).
 - [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
-- [ ] Expand window management: keyboard move/resize, better focus cycling, window rules.
+- [x] Expand window management: keyboard move/resize, better focus cycling, window rules.
 - [ ] Add more layout options (beyond floating/stack) and per-workspace layout state.
 - [ ] Add server-side decorations and theming controls.
 - [x] Add output power management (DPMS) and gamma/brightness controls.

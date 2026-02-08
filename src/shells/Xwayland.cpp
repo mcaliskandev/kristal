@@ -49,6 +49,10 @@ void xwayland_surface_map(Listener *listener, void * /*data*/) {
 		return;
 	}
 	surface->view.mapped = true;
+	server_apply_window_rules(
+		&surface->view,
+		surface->xwayland_surface->title,
+		surface->xwayland_surface->class);
 	wlr_scene_node_set_position(
 		&surface->view.scene_tree->node,
 		surface->xwayland_surface->x,
@@ -207,6 +211,7 @@ void server_new_xwayland_surface(Listener *listener, void *data) {
 	surface->view.type = KRISTAL_VIEW_XWAYLAND;
 	surface->view.workspace = server->current_workspace;
 	surface->view.mapped = false;
+	surface->view.force_floating = false;
 	surface->view.foreign_toplevel = nullptr;
 	surface->xwayland_surface = xsurface;
 	xsurface->data = surface;

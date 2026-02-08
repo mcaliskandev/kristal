@@ -206,28 +206,64 @@ KristalView *next_view_in_workspace(KristalServer *server) {
 		return nullptr;
 	}
 
+	KristalView *first = nullptr;
 	KristalView *view = nullptr;
+	bool found_focused = false;
+	wl_list_for_each(view, &server->views, link) {
+		if (!view->mapped || view->workspace != server->current_workspace) {
+			continue;
+		}
+		if (first == nullptr) {
+			first = view;
+		}
+		if (found_focused) {
+			return view;
+		}
+		if (view_surface(view) == server->focused_surface) {
+			found_focused = true;
+		}
+	}
+
+	if (found_focused) {
+		return first;
+	}
+	return first;
+}
+
+KristalView *prev_view_in_workspace(KristalServer *server) {
+	if (wl_list_empty(&server->views)) {
+		return nullptr;
+	}
+
+	KristalView *first = nullptr;
+	KristalView *view = nullptr;
+	bool found_focused = false;
 	wl_list_for_each_reverse(view, &server->views, link) {
 		if (!view->mapped || view->workspace != server->current_workspace) {
 			continue;
 		}
-		if (view_surface(view) == server->focused_surface) {
-			continue;
+		if (first == nullptr) {
+			first = view;
 		}
-		return view;
-	}
-
-	wl_list_for_each_reverse(view, &server->views, link) {
-		if (view->mapped && view->workspace == server->current_workspace) {
+		if (found_focused) {
 			return view;
 		}
+		if (view_surface(view) == server->focused_surface) {
+			found_focused = true;
+		}
 	}
 
-	return nullptr;
+	if (found_focused) {
+		return first;
+	}
+	return first;
 }
 
 bool view_is_tiled_candidate(KristalView *view) {
 	if (view == nullptr || !view->mapped) {
+		return false;
+	}
+	if (view->force_floating) {
 		return false;
 	}
 	if (view->type == KRISTAL_VIEW_XDG) {
@@ -246,6 +282,84 @@ bool view_is_tiled_candidate(KristalView *view) {
 	return xsurface->xwayland_surface != nullptr;
 #else
 	return false;
+#endif
+}
+
+bool view_get_box(KristalView *view, Box *out) {
+	if (view == nullptr || out == nullptr || view->scene_tree == nullptr) {
+		return false;
+	}
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		Box geometry{};
+		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+		out->x = view->scene_tree->node.x + geometry.x;
+		out->y = view->scene_tree->node.y + geometry.y;
+		out->width = geometry.width;
+		out->height = geometry.height;
+		return true;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface == nullptr) {
+		return false;
+	}
+	out->x = xsurface->xwayland_surface->x;
+	out->y = xsurface->xwayland_surface->y;
+	out->width = xsurface->xwayland_surface->width;
+	out->height = xsurface->xwayland_surface->height;
+	return true;
+#else
+	return false;
+#endif
+}
+
+void view_apply_box(KristalView *view, const Box &box) {
+	if (view == nullptr || view->scene_tree == nullptr) {
+		return;
+	}
+	const int width = std::max(64, box.width);
+	const int height = std::max(64, box.height);
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		Box geometry{};
+		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+		wlr_scene_node_set_position(
+			&view->scene_tree->node,
+			box.x - geometry.x,
+			box.y - geometry.y);
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+		return;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	if (xsurface->xwayland_surface == nullptr) {
+		return;
+	}
+	wlr_xwayland_surface_configure(
+		xsurface->xwayland_surface,
+		box.x,
+		box.y,
+		width,
+		height);
+	wlr_scene_node_set_position(&view->scene_tree->node, box.x, box.y);
+#endif
+}
+
+bool view_is_resize_blocked(KristalView *view) {
+	if (view == nullptr) {
+		return true;
+	}
+	if (view->type == KRISTAL_VIEW_XDG) {
+		auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+		return toplevel->xdg_toplevel->current.fullscreen ||
+			toplevel->xdg_toplevel->current.maximized;
+	}
+#ifdef KRISTAL_HAVE_XWAYLAND
+	auto *xsurface = wl_container_of(view, (KristalXwaylandSurface *)nullptr, view);
+	return xsurface->xwayland_surface != nullptr && xsurface->xwayland_surface->fullscreen;
+#else
+	return true;
 #endif
 }
 
@@ -318,6 +432,15 @@ enum class KeyActionType {
 	LAUNCHER,
 	CLOSE,
 	FOCUS_NEXT,
+	FOCUS_PREV,
+	MOVE_LEFT,
+	MOVE_RIGHT,
+	MOVE_UP,
+	MOVE_DOWN,
+	RESIZE_LEFT,
+	RESIZE_RIGHT,
+	RESIZE_UP,
+	RESIZE_DOWN,
 	WORKSPACE,
 	MOVE_WORKSPACE,
 };
@@ -375,6 +498,42 @@ bool parse_binding_action(const std::string &action_text, KeyActionType *out_act
 	}
 	if (action == "focus-next") {
 		*out_action = KeyActionType::FOCUS_NEXT;
+		return true;
+	}
+	if (action == "focus-prev") {
+		*out_action = KeyActionType::FOCUS_PREV;
+		return true;
+	}
+	if (action == "move-left") {
+		*out_action = KeyActionType::MOVE_LEFT;
+		return true;
+	}
+	if (action == "move-right") {
+		*out_action = KeyActionType::MOVE_RIGHT;
+		return true;
+	}
+	if (action == "move-up") {
+		*out_action = KeyActionType::MOVE_UP;
+		return true;
+	}
+	if (action == "move-down") {
+		*out_action = KeyActionType::MOVE_DOWN;
+		return true;
+	}
+	if (action == "resize-left") {
+		*out_action = KeyActionType::RESIZE_LEFT;
+		return true;
+	}
+	if (action == "resize-right") {
+		*out_action = KeyActionType::RESIZE_RIGHT;
+		return true;
+	}
+	if (action == "resize-up") {
+		*out_action = KeyActionType::RESIZE_UP;
+		return true;
+	}
+	if (action == "resize-down") {
+		*out_action = KeyActionType::RESIZE_DOWN;
 		return true;
 	}
 	if (action.rfind("ws", 0) == 0 && action.size() == 3) {
@@ -464,6 +623,16 @@ void load_keybindings_from_env() {
 			"Alt+D=launcher",
 			"Alt+Q=close",
 			"Alt+F1=focus-next",
+			"Alt+Tab=focus-next",
+			"Alt+Shift+Tab=focus-prev",
+			"Alt+Shift+Left=move-left",
+			"Alt+Shift+Right=move-right",
+			"Alt+Shift+Up=move-up",
+			"Alt+Shift+Down=move-down",
+			"Alt+Ctrl+Left=resize-left",
+			"Alt+Ctrl+Right=resize-right",
+			"Alt+Ctrl+Up=resize-up",
+			"Alt+Ctrl+Down=resize-down",
 			"Alt+1=ws1",
 			"Alt+2=ws2",
 			"Alt+3=ws3",
@@ -528,6 +697,37 @@ bool handle_keybinding(KristalServer *server, xkb_keysym_t sym, uint32_t modifie
 			}
 			break;
 		}
+		case KeyActionType::FOCUS_PREV: {
+			auto *prev_view = prev_view_in_workspace(server);
+			if (prev_view != nullptr) {
+				focus_surface(server, view_surface(prev_view));
+			}
+			break;
+		}
+		case KeyActionType::MOVE_LEFT:
+			server_move_focused_by(server, -32, 0);
+			break;
+		case KeyActionType::MOVE_RIGHT:
+			server_move_focused_by(server, 32, 0);
+			break;
+		case KeyActionType::MOVE_UP:
+			server_move_focused_by(server, 0, -32);
+			break;
+		case KeyActionType::MOVE_DOWN:
+			server_move_focused_by(server, 0, 32);
+			break;
+		case KeyActionType::RESIZE_LEFT:
+			server_resize_focused_by(server, -32, 0, true, false);
+			break;
+		case KeyActionType::RESIZE_RIGHT:
+			server_resize_focused_by(server, 32, 0, false, false);
+			break;
+		case KeyActionType::RESIZE_UP:
+			server_resize_focused_by(server, 0, -32, false, true);
+			break;
+		case KeyActionType::RESIZE_DOWN:
+			server_resize_focused_by(server, 0, 32, false, false);
+			break;
 		case KeyActionType::WORKSPACE:
 			server_apply_workspace(server, binding.workspace);
 			break;
@@ -814,6 +1014,50 @@ void server_close_focused(KristalServer *server) {
 		wlr_xwayland_surface_close(xsurface);
 	}
 #endif
+}
+
+void server_move_focused_by(KristalServer *server, int dx, int dy) {
+	if (server == nullptr) {
+		return;
+	}
+	auto *view = view_from_surface(server->focused_surface);
+	if (view == nullptr || view_is_resize_blocked(view)) {
+		return;
+	}
+	Box box{};
+	if (!view_get_box(view, &box)) {
+		return;
+	}
+	box.x += dx;
+	box.y += dy;
+	view_apply_box(view, box);
+}
+
+void server_resize_focused_by(KristalServer *server, int dw, int dh, bool from_left, bool from_top) {
+	if (server == nullptr) {
+		return;
+	}
+	auto *view = view_from_surface(server->focused_surface);
+	if (view == nullptr || view_is_resize_blocked(view)) {
+		return;
+	}
+	Box box{};
+	if (!view_get_box(view, &box)) {
+		return;
+	}
+	if (from_left) {
+		box.x += dw;
+		box.width -= dw;
+	} else {
+		box.width += dw;
+	}
+	if (from_top) {
+		box.y += dh;
+		box.height -= dh;
+	} else {
+		box.height += dh;
+	}
+	view_apply_box(view, box);
 }
 
 void server_arrange_workspace(KristalServer *server) {

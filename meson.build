@@ -56,7 +56,7 @@ if have_xwayland
 endif
 
 executable('kristal',
-    sources : ['src/main.cpp', 'src/core/Server.cpp',
+    sources : ['src/main.cpp', 'src/core/Server.cpp', 'src/core/Rules.cpp',
         'src/input/Input.cpp', 'src/input/Cursor.cpp', 'src/outputs/Output.cpp',
         'src/shells/Xdg.cpp', 'src/protocols/Protocols.cpp',
         xdg_shell_protocol_header, pointer_constraints_protocol_header,
