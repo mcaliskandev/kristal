@@ -11,7 +11,7 @@ struct KristalDecorationHandle {
 void decoration_request_mode(Listener *listener, void * /*data*/) {
 	auto *handle = wl_container_of(listener, (KristalDecorationHandle *)nullptr, request_mode);
 	wlr_xdg_toplevel_decoration_v1_set_mode(
-		handle->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+		handle->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 void decoration_destroy(Listener *listener, void * /*data*/) {

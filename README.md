@@ -45,6 +45,9 @@ Use environment variables before launching:
 - `KRISTAL_KEY_REPEAT_RATE`: key repeat rate in Hz (default `25`)
 - `KRISTAL_KEY_REPEAT_DELAY`: key repeat delay in ms (default `600`)
 - `KRISTAL_BINDINGS`: semicolon-separated keybindings (e.g. `Alt+Return=terminal;Alt+1=ws1`)
+- `KRISTAL_BORDER_WIDTH`: server-side border width in px (default `2`)
+- `KRISTAL_BORDER_FOCUSED`: focused border color `#RRGGBB` or `#RRGGBBAA`
+- `KRISTAL_BORDER_UNFOCUSED`: unfocused border color `#RRGGBB` or `#RRGGBBAA`
 - `KRISTAL_TAP_TO_CLICK`: `0`/`1` (default `0`)
 - `KRISTAL_NATURAL_SCROLL`: `0`/`1` (default `0`)
 - `KRISTAL_POINTER_ACCEL`: pointer acceleration speed `-1.0..1.0` (default `0.0`)
@@ -67,5 +70,5 @@ Keybinding actions include `layout-floating`, `layout-stack`, `layout-grid`, `la
 - [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
 - [x] Expand window management: keyboard move/resize, better focus cycling, window rules.
 - [x] Add more layout options (beyond floating/stack) and per-workspace layout state.
-- [ ] Add server-side decorations and theming controls.
+- [x] Add server-side decorations and theming controls.
 - [x] Add output power management (DPMS) and gamma/brightness controls.

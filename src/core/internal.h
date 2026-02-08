@@ -102,6 +102,7 @@ typedef struct wlr_scene_layer_surface_v1 SceneLayerSurface;
 typedef struct wlr_scene_node SceneNode;
 typedef struct wlr_scene_output SceneOutput;
 typedef struct wlr_scene_output_layout SceneOutputLayout;
+typedef struct wlr_scene_rect SceneRect;
 typedef struct wlr_scene_surface SceneSurface;
 typedef struct wlr_scene_tree SceneTree;
 typedef struct wlr_seat Seat;
@@ -270,6 +271,9 @@ struct KristalServer {
 	int next_window_y;
 	enum WindowLayoutMode window_layout_mode;
 	enum WindowLayoutMode workspace_layouts[10];
+	int border_width;
+	float border_color_focused[4];
+	float border_color_unfocused[4];
 	XdgOutputManager *xdg_output_mgr;
 	FractionalScaleManager *fractional_scale_mgr;
 	PrimarySelectionManager *primary_selection_mgr;
@@ -348,6 +352,10 @@ struct KristalToplevel {
 	bool has_saved_geometry;
 	Box saved_geometry;
 	bool placed;
+	SceneRect *border_top;
+	SceneRect *border_bottom;
+	SceneRect *border_left;
+	SceneRect *border_right;
 	Listener map;
 	Listener unmap;
 	Listener commit;
@@ -458,6 +466,7 @@ void server_register_foreign_toplevel(KristalView *view, const char *title, cons
 void server_update_foreign_toplevel(KristalView *view, const char *title, const char *app_id);
 void server_unregister_foreign_toplevel(KristalView *view);
 void server_apply_window_rules(KristalView *view, const char *title, const char *app_id);
+void server_update_view_decorations(KristalView *view);
 
 void server_new_output(Listener *listener, void *data);
 void server_cursor_motion(Listener *listener, void *data);

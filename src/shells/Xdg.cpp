@@ -7,6 +7,89 @@ namespace {
 
 constexpr int kCascadeStep = 32;
 
+void destroy_borders(KristalToplevel *toplevel) {
+	if (toplevel->border_top != nullptr) {
+		wlr_scene_node_destroy(&toplevel->border_top->node);
+		toplevel->border_top = nullptr;
+	}
+	if (toplevel->border_bottom != nullptr) {
+		wlr_scene_node_destroy(&toplevel->border_bottom->node);
+		toplevel->border_bottom = nullptr;
+	}
+	if (toplevel->border_left != nullptr) {
+		wlr_scene_node_destroy(&toplevel->border_left->node);
+		toplevel->border_left = nullptr;
+	}
+	if (toplevel->border_right != nullptr) {
+		wlr_scene_node_destroy(&toplevel->border_right->node);
+		toplevel->border_right = nullptr;
+	}
+}
+
+void update_borders(KristalToplevel *toplevel) {
+	if (toplevel == nullptr || toplevel->view.scene_tree == nullptr) {
+		return;
+	}
+	auto *server = toplevel->view.server;
+	if (server == nullptr || server->border_width <= 0) {
+		destroy_borders(toplevel);
+		return;
+	}
+
+	Box geometry{};
+	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geometry);
+	if (geometry.width <= 0 || geometry.height <= 0) {
+		destroy_borders(toplevel);
+		return;
+	}
+
+	const bool focused = server->focused_surface == toplevel->xdg_toplevel->base->surface;
+	const float *color = focused
+		? server->border_color_focused
+		: server->border_color_unfocused;
+
+	destroy_borders(toplevel);
+
+	const int bw = std::min(server->border_width, std::min(geometry.width, geometry.height));
+	toplevel->border_top = wlr_scene_rect_create(
+		toplevel->view.scene_tree,
+		geometry.width,
+		bw,
+		color);
+	toplevel->border_bottom = wlr_scene_rect_create(
+		toplevel->view.scene_tree,
+		geometry.width,
+		bw,
+		color);
+	toplevel->border_left = wlr_scene_rect_create(
+		toplevel->view.scene_tree,
+		bw,
+		geometry.height,
+		color);
+	toplevel->border_right = wlr_scene_rect_create(
+		toplevel->view.scene_tree,
+		bw,
+		geometry.height,
+		color);
+
+	wlr_scene_node_set_position(
+		&toplevel->border_top->node,
+		geometry.x,
+		geometry.y);
+	wlr_scene_node_set_position(
+		&toplevel->border_bottom->node,
+		geometry.x,
+		geometry.y + geometry.height - bw);
+	wlr_scene_node_set_position(
+		&toplevel->border_left->node,
+		geometry.x,
+		geometry.y);
+	wlr_scene_node_set_position(
+		&toplevel->border_right->node,
+		geometry.x + geometry.width - bw,
+		geometry.y);
+}
+
 void save_current_geometry(KristalToplevel *toplevel) {
 	if (toplevel->has_saved_geometry) {
 		return;
@@ -216,6 +299,7 @@ void xdg_toplevel_map(Listener *listener, void * /*data*/) {
 	wlr_scene_node_set_enabled(
 		&toplevel->view.scene_tree->node,
 		toplevel->view.workspace == toplevel->view.server->current_workspace);
+	update_borders(toplevel);
 
 	if (toplevel->xdg_toplevel->requested.fullscreen) {
 		apply_fullscreen_state(toplevel, true);
@@ -239,6 +323,7 @@ void xdg_toplevel_unmap(Listener *listener, void * /*data*/) {
 		reset_cursor_mode(toplevel->view.server);
 	}
 	toplevel->view.mapped = false;
+	destroy_borders(toplevel);
 	wl_list_remove(&toplevel->view.link);
 	server_unregister_foreign_toplevel(&toplevel->view);
 	server_arrange_workspace(toplevel->view.server);
@@ -249,6 +334,7 @@ void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
 	}
+	update_borders(toplevel);
 	if (toplevel->view.mapped) {
 		place_toplevel_if_needed(toplevel);
 	}
@@ -257,6 +343,7 @@ void xdg_toplevel_commit(Listener *listener, void * /*data*/) {
 void xdg_toplevel_destroy(Listener *listener, void * /*data*/) {
 	KristalToplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
+	destroy_borders(toplevel);
 	wl_list_remove(&toplevel->map.link);
 	wl_list_remove(&toplevel->unmap.link);
 	wl_list_remove(&toplevel->commit.link);
@@ -378,6 +465,10 @@ void server_new_xdg_toplevel(Listener *listener, void *data) {
 	toplevel->view.force_floating = false;
 	toplevel->view.foreign_toplevel = nullptr;
 	toplevel->xdg_toplevel = xdg_toplevel;
+	toplevel->border_top = nullptr;
+	toplevel->border_bottom = nullptr;
+	toplevel->border_left = nullptr;
+	toplevel->border_right = nullptr;
 	toplevel->view.scene_tree =
 		wlr_scene_xdg_surface_create(&toplevel->view.server->scene->tree, xdg_toplevel->base);
 	toplevel->view.scene_tree->node.data = &toplevel->view;
@@ -424,4 +515,15 @@ void server_new_xdg_popup(Listener * /*listener*/, void *data) {
 
 	popup->destroy.notify = xdg_popup_destroy;
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
+}
+
+void server_update_view_decorations(KristalView *view) {
+	if (view == nullptr) {
+		return;
+	}
+	if (view->type != KRISTAL_VIEW_XDG) {
+		return;
+	}
+	auto *toplevel = wl_container_of(view, (KristalToplevel *)nullptr, view);
+	update_borders(toplevel);
 }

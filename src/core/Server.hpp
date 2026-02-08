@@ -84,6 +84,9 @@ struct ServerComponents {
 	int next_window_y;
 	enum WindowLayoutMode window_layout_mode;
 	enum WindowLayoutMode workspace_layouts[10];
+	int border_width;
+	float border_color_focused[4];
+	float border_color_unfocused[4];
 	XdgOutputManager *xdg_output_mgr;
 	FractionalScaleManager *fractional_scale_mgr;
 	PrimarySelectionManager *primary_selection_mgr;

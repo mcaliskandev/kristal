@@ -397,6 +397,9 @@ void focus_surface(KristalServer *server, Surface *surface) {
 				prev_view->foreign_toplevel,
 				false);
 		}
+		if (prev_view != nullptr) {
+			server_update_view_decorations(prev_view);
+		}
 		deactivate_surface(server->focused_surface);
 	}
 
@@ -413,6 +416,7 @@ void focus_surface(KristalServer *server, Surface *surface) {
 				view->foreign_toplevel,
 				true);
 		}
+		server_update_view_decorations(view);
 	}
 
 	auto *xdg_toplevel = wlr_xdg_toplevel_try_from_wlr_surface(surface);

@@ -185,6 +185,73 @@ const char *window_layout_name(WindowLayoutMode mode) {
 	}
 }
 
+int parse_border_width() {
+	const char *value = getenv("KRISTAL_BORDER_WIDTH");
+	if (value == nullptr || value[0] == '\0') {
+		return 2;
+	}
+	char *end = nullptr;
+	errno = 0;
+	const long width = strtol(value, &end, 10);
+	if (errno != 0 || end == value || (end != nullptr && *end != '\0') || width < 0) {
+		wlr_log(
+			WLR_ERROR,
+			"Ignoring invalid KRISTAL_BORDER_WIDTH='%s'; expected non-negative integer",
+			value);
+		return 2;
+	}
+	return static_cast<int>(width);
+}
+
+bool parse_color_hex(const char *value, float out[4]) {
+	if (value == nullptr) {
+		return false;
+	}
+	std::string color = value;
+	if (!color.empty() && color[0] == '#') {
+		color = color.substr(1);
+	}
+	if (color.size() != 6 && color.size() != 8) {
+		return false;
+	}
+	unsigned int rgba = 0;
+	std::stringstream ss;
+	ss << std::hex << color;
+	ss >> rgba;
+	if (ss.fail()) {
+		return false;
+	}
+	if (color.size() == 6) {
+		const unsigned int r = (rgba >> 16) & 0xff;
+		const unsigned int g = (rgba >> 8) & 0xff;
+		const unsigned int b = rgba & 0xff;
+		out[0] = r / 255.0f;
+		out[1] = g / 255.0f;
+		out[2] = b / 255.0f;
+		out[3] = 1.0f;
+		return true;
+	}
+	const unsigned int r = (rgba >> 24) & 0xff;
+	const unsigned int g = (rgba >> 16) & 0xff;
+	const unsigned int b = (rgba >> 8) & 0xff;
+	const unsigned int a = rgba & 0xff;
+	out[0] = r / 255.0f;
+	out[1] = g / 255.0f;
+	out[2] = b / 255.0f;
+	out[3] = a / 255.0f;
+	return true;
+}
+
+void parse_border_color(const char *name, const float fallback[4], float out[4]) {
+	const char *value = getenv(name);
+	if (!parse_color_hex(value, out)) {
+		out[0] = fallback[0];
+		out[1] = fallback[1];
+		out[2] = fallback[2];
+		out[3] = fallback[3];
+	}
+}
+
 std::string trim_ascii(const std::string &value) {
 	size_t start = 0;
 	while (start < value.size() && (value[start] == ' ' || value[start] == '\t')) {
@@ -262,6 +329,9 @@ void reload_runtime_settings(KristalServer *server) {
 		return;
 	}
 
+	const float default_focused[4] = {0.2f, 0.6f, 1.0f, 1.0f};
+	const float default_unfocused[4] = {0.25f, 0.25f, 0.25f, 1.0f};
+
 	server->output_scale = parse_output_scale();
 	server->output_transform = parse_output_transform();
 	server->output_layout_mode = parse_output_layout_mode();
@@ -270,6 +340,16 @@ void reload_runtime_settings(KristalServer *server) {
 	server->window_layout_mode = parse_window_layout_mode();
 	for (int i = 0; i <= server->workspace_count; ++i) {
 		server->workspace_layouts[i] = server->window_layout_mode;
+	}
+	server->border_width = parse_border_width();
+	parse_border_color("KRISTAL_BORDER_FOCUSED", default_focused, server->border_color_focused);
+	parse_border_color(
+		"KRISTAL_BORDER_UNFOCUSED",
+		default_unfocused,
+		server->border_color_unfocused);
+	KristalView *view = nullptr;
+	wl_list_for_each(view, &server->views, link) {
+		server_update_view_decorations(view);
 	}
 	server_reload_keybindings();
 	server_reload_input_settings(server);
@@ -356,6 +436,14 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		WLR_INFO,
 		"Window layout: %s",
 		window_layout_name(components->window_layout_mode));
+	const float default_focused[4] = {0.2f, 0.6f, 1.0f, 1.0f};
+	const float default_unfocused[4] = {0.25f, 0.25f, 0.25f, 1.0f};
+	components->border_width = parse_border_width();
+	parse_border_color("KRISTAL_BORDER_FOCUSED", default_focused, components->border_color_focused);
+	parse_border_color(
+		"KRISTAL_BORDER_UNFOCUSED",
+		default_unfocused,
+		components->border_color_unfocused);
 	components->xdg_output_mgr =
 		wlr_xdg_output_manager_v1_create(components->display, components->output_layout);
 	components->fractional_scale_mgr =
