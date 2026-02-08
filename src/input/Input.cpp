@@ -33,6 +33,46 @@ struct XkbKeymapDeleter {
 	}
 };
 
+bool apply_keyboard_keymap(Keyboard *wlr_keyboard) {
+	if (wlr_keyboard == nullptr) {
+		return false;
+	}
+
+	std::unique_ptr<xkb_context, XkbContextDeleter> context(
+		xkb_context_new(XKB_CONTEXT_NO_FLAGS));
+	if (!context) {
+		wlr_log(WLR_ERROR, "failed to allocate xkb context");
+		return false;
+	}
+
+	xkb_rule_names rules{};
+	rules.rules = getenv("KRISTAL_XKB_RULES");
+	rules.model = getenv("KRISTAL_XKB_MODEL");
+	rules.layout = getenv("KRISTAL_XKB_LAYOUT");
+	rules.variant = getenv("KRISTAL_XKB_VARIANT");
+	rules.options = getenv("KRISTAL_XKB_OPTIONS");
+
+	std::unique_ptr<xkb_keymap, XkbKeymapDeleter> keymap(
+		xkb_keymap_new_from_names(context.get(), &rules, XKB_KEYMAP_COMPILE_NO_FLAGS));
+	if (!keymap) {
+		wlr_log(WLR_ERROR, "failed to create xkb keymap, using defaults");
+		keymap.reset(
+			xkb_keymap_new_from_names(context.get(), nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS));
+		if (!keymap) {
+			return false;
+		}
+	}
+
+	wlr_keyboard_set_keymap(wlr_keyboard, keymap.get());
+	const long repeat_rate = parse_env_long("KRISTAL_KEY_REPEAT_RATE", 25);
+	const long repeat_delay = parse_env_long("KRISTAL_KEY_REPEAT_DELAY", 600);
+	wlr_keyboard_set_repeat_info(
+		wlr_keyboard,
+		repeat_rate > 0 ? repeat_rate : 25,
+		repeat_delay >= 0 ? repeat_delay : 600);
+	return true;
+}
+
 long parse_env_long(const char *name, long fallback) {
 	const char *value = getenv(name);
 	if (value == nullptr || value[0] == '\0') {
@@ -400,14 +440,11 @@ bool parse_keybinding(const std::string &entry, KeyBinding *out) {
 	return true;
 }
 
-const std::vector<KeyBinding> &get_keybindings() {
-	static bool initialized = false;
-	static std::vector<KeyBinding> bindings;
-	if (initialized) {
-		return bindings;
-	}
-	initialized = true;
+static bool keybindings_initialized = false;
+static std::vector<KeyBinding> keybindings;
 
+void load_keybindings_from_env() {
+	keybindings.clear();
 	const char *env = getenv("KRISTAL_BINDINGS");
 	if (env != nullptr && env[0] != '\0') {
 		std::stringstream ss(env);
@@ -415,12 +452,12 @@ const std::vector<KeyBinding> &get_keybindings() {
 		while (std::getline(ss, entry, ';')) {
 			KeyBinding binding{};
 			if (parse_keybinding(entry, &binding)) {
-				bindings.push_back(binding);
+				keybindings.push_back(binding);
 			}
 		}
 	}
 
-	if (bindings.empty()) {
+	if (keybindings.empty()) {
 		const char *defaults[] = {
 			"Alt+Escape=quit",
 			"Alt+Return=terminal",
@@ -449,12 +486,18 @@ const std::vector<KeyBinding> &get_keybindings() {
 		for (const char *entry : defaults) {
 			KeyBinding binding{};
 			if (parse_keybinding(entry, &binding)) {
-				bindings.push_back(binding);
+				keybindings.push_back(binding);
 			}
 		}
 	}
+	keybindings_initialized = true;
+}
 
-	return bindings;
+const std::vector<KeyBinding> &get_keybindings() {
+	if (!keybindings_initialized) {
+		load_keybindings_from_env();
+	}
+	return keybindings;
 }
 
 bool handle_keybinding(KristalServer *server, xkb_keysym_t sym, uint32_t modifiers) {
@@ -540,40 +583,10 @@ void server_new_keyboard(KristalServer *server, InputDevice *device) {
 	keyboard->server = server;
 	keyboard->wlr_keyboard = wlr_keyboard;
 
-	std::unique_ptr<xkb_context, XkbContextDeleter> context(
-		xkb_context_new(XKB_CONTEXT_NO_FLAGS));
-	if (!context) {
-		wlr_log(WLR_ERROR, "failed to allocate xkb context");
+	if (!apply_keyboard_keymap(wlr_keyboard)) {
 		delete keyboard;
 		return;
 	}
-
-	xkb_rule_names rules{};
-	rules.rules = getenv("KRISTAL_XKB_RULES");
-	rules.model = getenv("KRISTAL_XKB_MODEL");
-	rules.layout = getenv("KRISTAL_XKB_LAYOUT");
-	rules.variant = getenv("KRISTAL_XKB_VARIANT");
-	rules.options = getenv("KRISTAL_XKB_OPTIONS");
-
-	std::unique_ptr<xkb_keymap, XkbKeymapDeleter> keymap(
-		xkb_keymap_new_from_names(context.get(), &rules, XKB_KEYMAP_COMPILE_NO_FLAGS));
-	if (!keymap) {
-		wlr_log(WLR_ERROR, "failed to create xkb keymap, using defaults");
-		keymap.reset(
-			xkb_keymap_new_from_names(context.get(), nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS));
-		if (!keymap) {
-			delete keyboard;
-			return;
-		}
-	}
-
-	wlr_keyboard_set_keymap(wlr_keyboard, keymap.get());
-	const long repeat_rate = parse_env_long("KRISTAL_KEY_REPEAT_RATE", 25);
-	const long repeat_delay = parse_env_long("KRISTAL_KEY_REPEAT_DELAY", 600);
-	wlr_keyboard_set_repeat_info(
-		wlr_keyboard,
-		repeat_rate > 0 ? repeat_rate : 25,
-		repeat_delay >= 0 ? repeat_delay : 600);
 
 	keyboard->modifiers.notify = keyboard_handle_modifiers;
 	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
@@ -684,6 +697,23 @@ void server_new_input(Listener *listener, void *data) {
 		caps |= WL_SEAT_CAPABILITY_TOUCH;
 	}
 	wlr_seat_set_capabilities(server->seat, caps);
+}
+
+void server_reload_input_settings(KristalServer *server) {
+	if (server == nullptr) {
+		return;
+	}
+
+	KristalKeyboard *keyboard = nullptr;
+	wl_list_for_each(keyboard, &server->keyboards, link) {
+		apply_keyboard_keymap(keyboard->wlr_keyboard);
+	}
+}
+
+void server_reload_keybindings() {
+	keybindings_initialized = false;
+	keybindings.clear();
+	load_keybindings_from_env();
 }
 
 void server_new_pointer_constraint(Listener *listener, void *data) {

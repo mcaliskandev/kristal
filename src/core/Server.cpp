@@ -3,6 +3,10 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <signal.h>
 
 #include <wayland-client-protocol.h>
 
@@ -171,6 +175,106 @@ const char *window_layout_name(WindowLayoutMode mode) {
 	}
 }
 
+std::string trim_ascii(const std::string &value) {
+	size_t start = 0;
+	while (start < value.size() && (value[start] == ' ' || value[start] == '\t')) {
+		start++;
+	}
+	size_t end = value.size();
+	while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t')) {
+		end--;
+	}
+	return value.substr(start, end - start);
+}
+
+std::string resolve_config_path() {
+	const char *path = getenv("KRISTAL_CONFIG");
+	if (path != nullptr && path[0] != '\0') {
+		return path;
+	}
+
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	if (xdg != nullptr && xdg[0] != '\0') {
+		return std::string(xdg) + "/kristal/kristal.conf";
+	}
+	const char *home = getenv("HOME");
+	if (home != nullptr && home[0] != '\0') {
+		return std::string(home) + "/.config/kristal/kristal.conf";
+	}
+	return {};
+}
+
+bool load_config_file(const std::string &path) {
+	if (path.empty()) {
+		return false;
+	}
+
+	std::ifstream file(path);
+	if (!file.is_open()) {
+		return false;
+	}
+
+	std::string line;
+	while (std::getline(file, line)) {
+		const std::string trimmed = trim_ascii(line);
+		if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';') {
+			continue;
+		}
+		std::string entry = trimmed;
+		if (entry.rfind("export ", 0) == 0) {
+			entry = trim_ascii(entry.substr(7));
+		}
+		const auto eq = entry.find('=');
+		if (eq == std::string::npos) {
+			continue;
+		}
+		std::string key = trim_ascii(entry.substr(0, eq));
+		std::string value = trim_ascii(entry.substr(eq + 1));
+		if (key.empty()) {
+			continue;
+		}
+		if ((value.size() >= 2) &&
+			((value.front() == '"' && value.back() == '"') ||
+			(value.front() == '\'' && value.back() == '\''))) {
+			value = value.substr(1, value.size() - 2);
+		}
+		if (key.rfind("KRISTAL_", 0) != 0) {
+			key = "KRISTAL_" + key;
+		}
+		setenv(key.c_str(), value.c_str(), 1);
+	}
+
+	return true;
+}
+
+void reload_runtime_settings(KristalServer *server) {
+	if (server == nullptr) {
+		return;
+	}
+
+	server->output_scale = parse_output_scale();
+	server->output_transform = parse_output_transform();
+	server->output_layout_mode = parse_output_layout_mode();
+	server->output_config_path = getenv("KRISTAL_OUTPUTS_STATE");
+	server->window_placement_mode = parse_window_placement_mode();
+	server->window_layout_mode = parse_window_layout_mode();
+	server_reload_keybindings();
+	server_reload_input_settings(server);
+	server_arrange_workspace(server);
+}
+
+int handle_sighup(int /*signal_number*/, void *data) {
+	auto *server = static_cast<KristalServer *>(data);
+	const std::string path = resolve_config_path();
+	if (load_config_file(path)) {
+		wlr_log(WLR_INFO, "Reloaded config: %s", path.c_str());
+	} else if (!path.empty()) {
+		wlr_log(WLR_INFO, "Config reload skipped (missing): %s", path.c_str());
+	}
+	reload_runtime_settings(server);
+	return 0;
+}
+
 } // namespace
 
 KristalCompositor::KristalCompositor() = default;
@@ -188,7 +292,12 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
         return 1;
     }
 
-    wlr_log_init(WLR_DEBUG, nullptr);
+	wlr_log_init(WLR_DEBUG, nullptr);
+
+	const std::string config_path = resolve_config_path();
+	if (load_config_file(config_path)) {
+		wlr_log(WLR_INFO, "Loaded config: %s", config_path.c_str());
+	}
 
     CreateDisplay();
     CreateBackend();
@@ -433,6 +542,12 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 		&components->output_power_set_mode);
 	components->gamma_control_mgr =
 		wlr_gamma_control_manager_v1_create(components->display);
+
+	wl_event_loop_add_signal(
+		wl_display_get_event_loop(components->display),
+		SIGHUP,
+		handle_sighup,
+		components.get());
 	components->active_constraint = nullptr;
 	components->focused_surface = nullptr;
 	components->grabbed_xwayland = nullptr;

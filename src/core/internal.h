@@ -294,6 +294,9 @@ struct KristalServer {
 	struct wlr_output_manager_v1 *output_manager;
 	Listener output_manager_apply;
 	Listener output_manager_test;
+	OutputPowerManagerV1 *output_power_mgr;
+	Listener output_power_set_mode;
+	GammaControlManagerV1 *gamma_control_mgr;
 	XdgDecorationManager *decoration_mgr;
 	Listener new_toplevel_decoration;
 	XdgActivation *activation_mgr;
@@ -467,6 +470,8 @@ void server_cursor_tablet_tip(Listener *listener, void *data);
 void server_cursor_tablet_button(Listener *listener, void *data);
 
 void server_new_input(Listener *listener, void *data);
+void server_reload_input_settings(KristalServer *server);
+void server_reload_keybindings();
 void seat_request_cursor(Listener *listener, void *data);
 void seat_request_set_selection(Listener *listener, void *data);
 void server_new_pointer_constraint(Listener *listener, void *data);

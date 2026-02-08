@@ -29,6 +29,7 @@ ninja -C build
 
 Use environment variables before launching:
 
+- `KRISTAL_CONFIG`: optional config file path (default: `$XDG_CONFIG_HOME/kristal/kristal.conf` or `$HOME/.config/kristal/kristal.conf`)
 - `KRISTAL_OUTPUT_SCALE`: floating-point scale factor (default `1.0`)
 - `KRISTAL_OUTPUT_LAYOUT`: `auto` (default), `horizontal`, or `vertical`
 - `KRISTAL_OUTPUTS_STATE`: path to persist per-output scale/transform/position
@@ -42,6 +43,7 @@ Use environment variables before launching:
 - `KRISTAL_XKB_OPTIONS`: XKB options (optional)
 - `KRISTAL_KEY_REPEAT_RATE`: key repeat rate in Hz (default `25`)
 - `KRISTAL_KEY_REPEAT_DELAY`: key repeat delay in ms (default `600`)
+- `KRISTAL_BINDINGS`: semicolon-separated keybindings (e.g. `Alt+Return=terminal;Alt+1=ws1`)
 - `KRISTAL_TAP_TO_CLICK`: `0`/`1` (default `0`)
 - `KRISTAL_NATURAL_SCROLL`: `0`/`1` (default `0`)
 - `KRISTAL_POINTER_ACCEL`: pointer acceleration speed `-1.0..1.0` (default `0.0`)
@@ -52,11 +54,14 @@ Example:
 KRISTAL_OUTPUT_SCALE=1.5 KRISTAL_OUTPUT_LAYOUT=vertical ./build/kristal
 ```
 
+Config files accept the same `KRISTAL_*` keys, one per line as `KEY=VALUE` (lines starting with `#` or `;` are ignored).
+Send `SIGHUP` to reload at runtime.
+
 *Note:* layer-shell support is built only when the wlroots protocol headers are available (the `wlr-layer-shell-unstable-v1-protocol.h` header from `wlr-protocols`). If missing, the compositor still builds but layer-shell is disabled.
 
 ## TODO
 
-- [ ] Add a real config file with reloadable settings (instead of only env vars).
+- [x] Add a real config file with reloadable settings (instead of only env vars).
 - [x] Make keybindings configurable (currently hardcoded Alt+... bindings).
 - [ ] Expand window management: keyboard move/resize, better focus cycling, window rules.
 - [ ] Add more layout options (beyond floating/stack) and per-workspace layout state.
