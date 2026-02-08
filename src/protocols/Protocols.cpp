@@ -343,6 +343,27 @@ void server_new_idle_inhibitor(Listener *listener, void *data) {
 	update_idle_inhibit(server);
 }
 
+void server_output_power_set_mode(Listener *listener, void *data) {
+	auto *server = wl_container_of(listener, (KristalServer *)nullptr, output_power_set_mode);
+	auto *event = static_cast<OutputPowerSetModeEvent *>(data);
+	if (server == nullptr || event == nullptr || event->output_power == nullptr) {
+		return;
+	}
+
+	Output *output = event->output_power->output;
+	if (output == nullptr) {
+		return;
+	}
+
+	OutputState state{};
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(
+		&state,
+		event->mode == WLR_OUTPUT_POWER_V1_MODE_ON);
+	wlr_output_commit_state(output, &state);
+	wlr_output_state_finish(&state);
+}
+
 void server_new_text_input(Listener *listener, void *data) {
 	auto *server = wl_container_of(listener, (KristalServer *)nullptr, new_text_input);
 	auto *text_input = static_cast<TextInputV3 *>(data);

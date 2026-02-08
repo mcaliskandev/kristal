@@ -110,6 +110,9 @@ struct ServerComponents {
 	struct wlr_output_manager_v1 *output_manager;
 	Listener output_manager_apply;
 	Listener output_manager_test;
+	OutputPowerManagerV1 *output_power_mgr;
+	Listener output_power_set_mode;
+	GammaControlManagerV1 *gamma_control_mgr;
 	XdgDecorationManager *decoration_mgr;
 	Listener new_toplevel_decoration;
 	XdgActivation *activation_mgr;

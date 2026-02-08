@@ -25,6 +25,8 @@ extern "C" {
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #ifdef __cplusplus
@@ -82,6 +84,9 @@ typedef struct wlr_output_layout OutputLayout;
 typedef struct wlr_output_layout_output OutputLayoutOutput;
 typedef struct wlr_output_mode OutputMode;
 typedef struct wlr_output_state OutputState;
+typedef struct wlr_output_power_manager_v1 OutputPowerManagerV1;
+typedef struct wlr_output_power_v1_set_mode_event OutputPowerSetModeEvent;
+typedef struct wlr_gamma_control_manager_v1 GammaControlManagerV1;
 typedef struct wlr_pointer_axis_event PointerAxisEvent;
 typedef struct wlr_pointer_button_event PointerButtonEvent;
 typedef struct wlr_pointer_motion_event PointerMotionEvent;
@@ -467,6 +472,7 @@ void seat_request_set_selection(Listener *listener, void *data);
 void server_new_pointer_constraint(Listener *listener, void *data);
 void server_output_manager_apply(Listener *listener, void *data);
 void server_output_manager_test(Listener *listener, void *data);
+void server_output_power_set_mode(Listener *listener, void *data);
 void server_new_toplevel_decoration(Listener *listener, void *data);
 void server_request_activate(Listener *listener, void *data);
 void server_new_idle_inhibitor(Listener *listener, void *data);

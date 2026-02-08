@@ -426,6 +426,13 @@ int KristalCompositor::Run(const std::string &startup_cmd) {
 	components->output_manager_test.notify = server_output_manager_test;
 	wl_signal_add(&components->output_manager->events.test,
 		&components->output_manager_test);
+	components->output_power_mgr =
+		wlr_output_power_manager_v1_create(components->display);
+	components->output_power_set_mode.notify = server_output_power_set_mode;
+	wl_signal_add(&components->output_power_mgr->events.set_mode,
+		&components->output_power_set_mode);
+	components->gamma_control_mgr =
+		wlr_gamma_control_manager_v1_create(components->display);
 	components->active_constraint = nullptr;
 	components->focused_surface = nullptr;
 	components->grabbed_xwayland = nullptr;
